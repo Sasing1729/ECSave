@@ -1,0 +1,25 @@
+{
+    "name": "ECSave.Tests",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Entities",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Unity.Collections",
+        "Unity.Burst",
+        "ECSave",
+        "ECSave.Format"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "UniTask.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,21 @@
+{
+    "name": "ECSave",
+    "rootNamespace": "ECSave",
+    "references": [
+        "Unity.Entities",
+        "Unity.Collections",
+        "Unity.Burst",
+        "ECSave.Format"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "UniTask.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
