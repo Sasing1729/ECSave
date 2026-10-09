@@ -26,6 +26,11 @@ namespace ECSave.Internal
             NativeParallelHashMap<Entity, int> idOf);
         public abstract void ApplySectionBody(
             ByteView sectionBody, NativeArray<Entity> persistentToEntity, EntityManager em);
+        public abstract ModuleBackup BackupForRollback(
+            NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator);
+        public abstract void RestoreFromRollback(
+            NativeArray<Entity> updateTargets, in ModuleBackup backup, EntityManager em);
+        public abstract void RemoveFromEntity(Entity entity, EntityManager em);
     }
 
     public abstract class SaveTypeModule<T> : SaveTypeModule
@@ -46,14 +51,13 @@ namespace ECSave.Internal
             });
 
         public override int ComputeBodySize(in SnapshotBuffer buffer)
-        {
-            int count = buffer.Count;
-            bool hasEnabled = HasEnabledBits && buffer.HasEnabledStates;
-            return CommonSectionWriter.ComputeFixedBodySize(
-                count, RecordStride, hasEnabledBits: hasEnabled);
-        }
+            => CommonSectionWriter.ComputeFixedBodySize(
+                buffer.Count, RecordStride,
+                hasEnabledBits: HasEnabledBits && buffer.HasEnabledStates);
 
         protected virtual void ApplyEnabled(Entity entity, EntityManager em, bool enabled) { }
+        protected virtual bool ReadEnabled(Entity entity, EntityManager em) => true;
+        protected virtual void WriteEnabled(Entity entity, EntityManager em, bool enabled) { }
 
         public override unsafe void WriteSectionBody(
             ref FormatWriter writer,
@@ -62,87 +66,29 @@ namespace ECSave.Internal
         {
             int count = buffer.Count;
             bool hasEnabled = HasEnabledBits && buffer.HasEnabledStates;
-            var refs = EntityRefOffsets;
             int rawStride = RawRecordStride;
             int dataStride = RecordStride;
+            var refs = EntityRefOffsets;
 
-            uint flags = ECSaveFormatConstants.SectionFlags_FixedLength;
-            if (hasEnabled) flags |= ECSaveFormatConstants.SectionFlags_HasEnabledBits;
-
-            writer.WriteU32((uint)count);
-            writer.WriteU32(flags);
-            writer.WriteU32((uint)dataStride);
-
-            if (count > 0)
-            {
-                using var indices = new NativeArray<uint>(count, Allocator.TempJob);
-                uint* idst = (uint*)indices.GetUnsafePtr();
-                for (int i = 0; i < count; i++)
-                    idst[i] = (uint)idOf[buffer.Entities[i]];
-                writer.WriteBytes((byte*)idst, count * 4);
-            }
+            SectionBodyHelper.WriteFixedHeader(ref writer, count, dataStride, hasEnabled);
+            SectionBodyHelper.WriteEntityIndices(ref writer, in buffer, idOf);
 
             if (hasEnabled)
+                SectionBodyHelper.WriteEnabledBits(ref writer, in buffer, count);
+
+            if (dataStride <= 0 || count == 0) return;
+
+            if (refs.Length == 0)
             {
-                int byteCount = (count + 7) / 8;
-                using var eb = new NativeArray<byte>(byteCount, Allocator.TempJob);
-                byte* eptr = (byte*)eb.GetUnsafePtr();
-                for (int b = 0; b < byteCount; b++) eptr[b] = 0;
+                byte* src = (byte*)buffer.Values.GetUnsafeReadOnlyPtr();
+                writer.WriteBytes(src, count * rawStride);
+            }
+            else
+            {
                 for (int i = 0; i < count; i++)
-                    if (buffer.EnabledStates[i] != 0)
-                        eptr[i / 8] |= (byte)(1 << (i % 8));
-                if (byteCount > 0)
-                    writer.WriteBytes(eptr, byteCount);
+                    EntityRefCodec.WriteRecordWithRefs(
+                        ref writer, buffer.GetValuePtr(i), refs, rawStride, idOf);
             }
-
-            if (dataStride > 0 && count > 0)
-            {
-                if (refs.Length == 0)
-                {
-                    byte* src = (byte*)buffer.Values.GetUnsafeReadOnlyPtr();
-                    writer.WriteBytes(src, count * rawStride);
-                }
-                else
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        byte* src = buffer.GetValuePtr(i);
-                        WriteRecordWithRefs(ref writer, src, refs, rawStride, idOf);
-                    }
-                }
-            }
-        }
-
-        private static unsafe void WriteRecordWithRefs(
-            ref FormatWriter writer,
-            byte* src,
-            int[] refOffsets,
-            int rawStride,
-            NativeParallelHashMap<Entity, int> idOf)
-        {
-            int srcOff = 0;
-            for (int r = 0; r < refOffsets.Length; r++)
-            {
-                int refOff = refOffsets[r];
-                int gap = refOff - srcOff;
-                if (gap > 0)
-                    writer.WriteBytes(src + srcOff, gap);
-
-                Entity e = *(Entity*)(src + refOff);
-                uint pid;
-                if (e == Entity.Null)
-                    pid = EntityRefConstants.NullRef;
-                else if (idOf.TryGetValue(e, out int id))
-                    pid = (uint)id;
-                else
-                    pid = EntityRefConstants.UnresolvedRef;
-
-                writer.WriteU32(pid);
-                srcOff = refOff + 8;
-            }
-            int remaining = rawStride - srcOff;
-            if (remaining > 0)
-                writer.WriteBytes(src + srcOff, remaining);
         }
 
         public override unsafe void ApplySectionBody(
@@ -189,59 +135,34 @@ namespace ECSave.Internal
                     }
                     else
                     {
-                        ExpandRecord(record, dataStride, refs, rawStride, persistentToEntity, eptr);
+                        EntityRefCodec.ExpandRecord(
+                            record, dataStride, refs, rawStride, persistentToEntity, eptr);
                         WriteValue(target, em, eptr);
                     }
 
                     if (hasEnabled)
-                    {
-                        bool enabled = (v.EnabledBits[i / 8] & (1 << (i % 8))) != 0;
-                        ApplyEnabled(target, em, enabled);
-                    }
+                        ApplyEnabled(target, em, SectionBodyHelper.UnpackEnabled(v.EnabledBits, i));
                 }
             }
         }
 
-        private static unsafe void ExpandRecord(
-            byte* src,
-            int dataStride,
-            int[] refOffsets,
-            int rawStride,
-            NativeArray<Entity> persistentToEntity,
-            byte* dst)
-        {
-            int dstOff = 0;
-            int srcOff = 0;
-            for (int r = 0; r < refOffsets.Length; r++)
-            {
-                int refOff = refOffsets[r];
-                int gap = refOff - dstOff;
-                for (int b = 0; b < gap; b++)
-                    dst[dstOff + b] = src[srcOff + b];
-                dstOff += gap;
-                srcOff += gap;
+        public override ModuleBackup BackupForRollback(
+            NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
+            => RollbackHelper.BackupFixed<T>(
+                this, updateTargets, em, allocator, HasEnabledBits, ReadEnabled);
 
-                uint pid = *(uint*)(src + srcOff);
-                Entity e;
-                if (pid == EntityRefConstants.NullRef)
-                    e = Entity.Null;
-                else if (pid == EntityRefConstants.UnresolvedRef)
-                    e = Entity.Null;
-                else if (pid < (uint)persistentToEntity.Length)
-                    e = persistentToEntity[(int)pid];
-                else
-                    e = Entity.Null;
-
-                *(Entity*)(dst + dstOff) = e;
-                dstOff += 8;
-                srcOff += 4;
-            }
-            int remaining = dataStride - srcOff;
-            for (int b = 0; b < remaining; b++)
-                dst[dstOff + b] = src[srcOff + b];
-        }
+        public override void RestoreFromRollback(
+            NativeArray<Entity> updateTargets, in ModuleBackup backup, EntityManager em)
+            => RollbackHelper.RestoreFixed<T>(
+                updateTargets, in backup, em, HasEnabledBits, WriteEnabled);
 
         protected abstract unsafe void WriteValue(Entity entity, EntityManager em, byte* value);
+
+        public override void RemoveFromEntity(Entity entity, EntityManager em)
+        {
+            if (em.HasComponent<T>(entity))
+                em.RemoveComponent<T>(entity);
+        }
     }
 
     public abstract class SaveTypeModulePlain<T> : SaveTypeModule<T>
@@ -266,9 +187,13 @@ namespace ECSave.Internal
         }
 
         protected override void ApplyEnabled(Entity entity, EntityManager em, bool enabled)
-        {
-            em.SetComponentEnabled<T>(entity, enabled);
-        }
+            => em.SetComponentEnabled<T>(entity, enabled);
+
+        protected override bool ReadEnabled(Entity entity, EntityManager em)
+            => em.IsComponentEnabled<T>(entity);
+
+        protected override void WriteEnabled(Entity entity, EntityManager em, bool enabled)
+            => em.SetComponentEnabled<T>(entity, enabled);
     }
 
     public abstract class SaveTypeModuleBuffer<T> : SaveTypeModule
@@ -282,6 +207,8 @@ namespace ECSave.Internal
         public override bool HasEnabledBits => false;
 
         protected virtual void ApplyEnabled(Entity entity, EntityManager em, bool enabled) { }
+        protected virtual bool ReadEnabled(Entity entity, EntityManager em) => true;
+        protected virtual void WriteEnabled(Entity entity, EntityManager em, bool enabled) { }
 
         public override EntityQuery BuildQuery(EntityManager em)
             => em.CreateEntityQuery(new EntityQueryDesc
@@ -342,49 +269,18 @@ namespace ECSave.Internal
             bool hasEnabled = HasEnabledBits && buffer.HasEnabledStates;
             int dataStride = RecordStride;
 
-            uint flags = 0;
-            if (hasEnabled) flags |= ECSaveFormatConstants.SectionFlags_HasEnabledBits;
-
-            writer.WriteU32((uint)count);
-            writer.WriteU32(flags);
-            writer.WriteU32((uint)dataStride);
-
-            if (count > 0)
-            {
-                using var indices = new NativeArray<uint>(count, Allocator.TempJob);
-                uint* idst = (uint*)indices.GetUnsafePtr();
-                for (int i = 0; i < count; i++)
-                    idst[i] = (uint)idOf[buffer.Entities[i]];
-                writer.WriteBytes((byte*)idst, count * 4);
-            }
-
-            int totalElements = 0;
-            using (var offsets = new NativeArray<uint>(count + 1, Allocator.TempJob))
-            {
-                uint* optr = (uint*)offsets.GetUnsafePtr();
-                optr[0] = 0;
-                for (int i = 0; i < count; i++)
-                {
-                    totalElements += buffer.RecordLengths[i];
-                    optr[i + 1] = (uint)(totalElements * dataStride);
-                }
-                writer.WriteBytes((byte*)optr, (count + 1) * 4);
-            }
+            SectionBodyHelper.WriteVariableHeader(ref writer, count, dataStride, hasEnabled);
+            SectionBodyHelper.WriteEntityIndices(ref writer, in buffer, idOf);
+            SectionBodyHelper.WriteRecordOffsets(ref writer, in buffer, count, dataStride);
 
             if (hasEnabled)
-            {
-                int byteCount = (count + 7) / 8;
-                using var eb = new NativeArray<byte>(byteCount, Allocator.TempJob);
-                byte* eptr = (byte*)eb.GetUnsafePtr();
-                for (int b = 0; b < byteCount; b++) eptr[b] = 0;
-                for (int i = 0; i < count; i++)
-                    if (buffer.EnabledStates[i] != 0)
-                        eptr[i / 8] |= (byte)(1 << (i % 8));
-                if (byteCount > 0)
-                    writer.WriteBytes(eptr, byteCount);
-            }
+                SectionBodyHelper.WriteEnabledBits(ref writer, in buffer, count);
 
+            int totalElements = 0;
+            for (int i = 0; i < count; i++)
+                totalElements += buffer.RecordLengths[i];
             int totalBytes = totalElements * dataStride;
+
             if (totalBytes > 0)
             {
                 byte* src = (byte*)buffer.Values.GetUnsafeReadOnlyPtr();
@@ -466,11 +362,24 @@ namespace ECSave.Internal
                 }
 
                 if (hasEnabled)
-                {
-                    bool enabled = (v.EnabledBits[i / 8] & (1 << (i % 8))) != 0;
-                    ApplyEnabled(target, em, enabled);
-                }
+                    ApplyEnabled(target, em, SectionBodyHelper.UnpackEnabled(v.EnabledBits, i));
             }
+        }
+
+        public override ModuleBackup BackupForRollback(
+            NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
+            => RollbackHelper.BackupBuffer<T>(
+                this, updateTargets, em, allocator, HasEnabledBits, ReadEnabled);
+
+        public override void RestoreFromRollback(
+            NativeArray<Entity> updateTargets, in ModuleBackup backup, EntityManager em)
+            => RollbackHelper.RestoreBuffer<T>(
+                updateTargets, in backup, em, HasEnabledBits, WriteEnabled);
+
+        public override void RemoveFromEntity(Entity entity, EntityManager em)
+        {
+            if (em.HasComponent<T>(entity))
+                em.RemoveComponent<T>(entity);
         }
     }
 
@@ -486,9 +395,13 @@ namespace ECSave.Internal
         }
 
         protected override void ApplyEnabled(Entity entity, EntityManager em, bool enabled)
-        {
-            em.SetComponentEnabled<T>(entity, enabled);
-        }
+            => em.SetComponentEnabled<T>(entity, enabled);
+
+        protected override bool ReadEnabled(Entity entity, EntityManager em)
+            => em.IsComponentEnabled<T>(entity);
+
+        protected override void WriteEnabled(Entity entity, EntityManager em, bool enabled)
+            => em.SetComponentEnabled<T>(entity, enabled);
     }
 
     public abstract class SaveTypeModuleShared<T> : SaveTypeModule
@@ -526,18 +439,8 @@ namespace ECSave.Internal
         {
             int count = buffer.Count;
 
-            writer.WriteU32((uint)count);
-            writer.WriteU32(ECSaveFormatConstants.SectionFlags_FixedLength);
-            writer.WriteU32((uint)RecordStride);
-
-            if (count > 0)
-            {
-                using var indices = new NativeArray<uint>(count, Allocator.TempJob);
-                uint* idst = (uint*)indices.GetUnsafePtr();
-                for (int i = 0; i < count; i++)
-                    idst[i] = (uint)idOf[buffer.Entities[i]];
-                writer.WriteBytes((byte*)idst, count * 4);
-            }
+            SectionBodyHelper.WriteFixedHeader(ref writer, count, RecordStride, hasEnabled: false);
+            SectionBodyHelper.WriteEntityIndices(ref writer, in buffer, idOf);
 
             if (RecordStride > 0 && count > 0)
             {
@@ -582,6 +485,33 @@ namespace ECSave.Internal
                 else
                     em.AddSharedComponent(target, value);
             }
+        }
+
+        public override ModuleBackup BackupForRollback(
+            NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
+        {
+            RollbackHelper.BackupShared<T>(
+                updateTargets, em, allocator,
+                out var values, out var presence);
+
+            return new ModuleBackup
+            {
+                Module = this,
+                Values = values,
+                Presence = presence,
+                Enabled = default,
+                Count = updateTargets.Length,
+            };
+        }
+
+        public override void RestoreFromRollback(
+            NativeArray<Entity> updateTargets, in ModuleBackup backup, EntityManager em)
+            => RollbackHelper.RestoreShared<T>(updateTargets, in backup, em);
+
+        public override void RemoveFromEntity(Entity entity, EntityManager em)
+        {
+            if (em.HasComponent<T>(entity))
+                em.RemoveComponent<T>(entity);
         }
     }
 }

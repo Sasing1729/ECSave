@@ -14,6 +14,9 @@ namespace ECSave.Internal
             {
                 ref var entry = ref ctx.SectionTable.Entries[i];
 
+                if (entry.Kind == SectionKind.Identity)
+                    continue;
+
                 var m = FindModuleByNameHash(ctx.Definition, entry.NameHash);
                 if (m == null)
                 {

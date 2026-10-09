@@ -6,10 +6,6 @@ using Unity.Entities;
 
 namespace ECSave
 {
-    /// <summary>
-    /// 指定 World を対象として Serialize / Deserialize を実行する（3.2節）。
-    /// Phase 4 は同期実行（UniTask.FromResult）。非同期化は Phase 7。
-    /// </summary>
     public sealed class SaveSystem
     {
         private readonly SaveDefinition _definition;
@@ -67,7 +63,8 @@ namespace ECSave
 
             try
             {
-                var op = new DeserializeOperation(_definition, world, data, deletionPolicy);
+                var op = new DeserializeOperation(
+                    _definition, world, data, restorationScope, deletionPolicy);
                 var result = op.Execute(cancellationToken);
                 return UniTask.FromResult(result);
             }

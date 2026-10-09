@@ -20,6 +20,8 @@ namespace ECSave.Internal
         public NativeArray<Entity> PersistentToEntity;
         public WarningCollector Warnings;
 
+        public NativeParallelHashSet<Entity>[] RegisteredTargets;
+
         public static PrephaseContext Create(SaveDefinition def, World world)
         {
             return new PrephaseContext
@@ -34,6 +36,17 @@ namespace ECSave.Internal
         {
             if (NativeData.IsCreated) NativeData.Dispose();
             if (PersistentToEntity.IsCreated) PersistentToEntity.Dispose();
+
+            if (RegisteredTargets != null)
+            {
+                for (int i = 0; i < RegisteredTargets.Length; i++)
+                {
+                    if (RegisteredTargets[i].IsCreated)
+                        RegisteredTargets[i].Dispose();
+                }
+                RegisteredTargets = null;
+            }
+
             Warnings.Dispose();
             NativeData = default;
             PersistentToEntity = default;

@@ -1,0 +1,87 @@
+﻿using ECSave.Format;
+using Unity.Collections;
+using Unity.Entities;
+
+namespace ECSave.Internal
+{
+    internal static unsafe class P1_DeletionPlanPhase
+    {
+        public static SaveLoadErrorCode Execute(
+            ref PrephaseContext ctx,
+            RestorationScope scope,
+            DeletionPolicy policy,
+            NativeList<Entity> destroyTargets)
+        {
+            if (policy == DeletionPolicy.None)
+                return SaveLoadErrorCode.None;
+
+            var em = ctx.World.EntityManager;
+            int cap = ctx.PersistentToEntity.Length > 0 ? ctx.PersistentToEntity.Length : 1;
+
+            var updateTargets = new NativeParallelHashSet<Entity>(cap, Allocator.TempJob);
+
+            try
+            {
+                for (int i = 0; i < ctx.PersistentToEntity.Length; i++)
+                {
+                    var e = ctx.PersistentToEntity[i];
+                    if (e != Entity.Null) updateTargets.Add(e);
+                }
+
+                NativeParallelHashSet<Entity> registeredSet = default;
+                if (policy == DeletionPolicy.ByRegistration)
+                {
+                    registeredSet = new NativeParallelHashSet<Entity>(256, Allocator.TempJob);
+                    for (int i = 0; i < ctx.Definition.Modules.Count; i++)
+                    {
+                        var m = ctx.Definition.Modules[i];
+                        var q = m.BuildQuery(em);
+                        using var es = q.ToEntityArray(Allocator.Temp);
+                        for (int j = 0; j < es.Length; j++)
+                            registeredSet.Add(es[j]);
+                    }
+                }
+
+                try
+                {
+                    if (scope.IsEntireWorld)
+                    {
+                        using var all = em.GetAllEntities(Allocator.TempJob);
+                        for (int i = 0; i < all.Length; i++)
+                        {
+                            var e = all[i];
+                            if (em.HasComponent<Prefab>(e)) continue;
+                            if (updateTargets.Contains(e)) continue;
+                            if (policy == DeletionPolicy.ByRegistration
+                                && !registeredSet.Contains(e)) continue;
+                            destroyTargets.Add(e);
+                        }
+                    }
+                    else
+                    {
+                        var regionQuery = scope.Query;
+                        using var regionEntities = regionQuery.ToEntityArray(Allocator.TempJob);
+                        for (int i = 0; i < regionEntities.Length; i++)
+                        {
+                            var e = regionEntities[i];
+                            if (updateTargets.Contains(e)) continue;
+                            if (policy == DeletionPolicy.ByRegistration
+                                && !registeredSet.Contains(e)) continue;
+                            destroyTargets.Add(e);
+                        }
+                    }
+
+                    return SaveLoadErrorCode.None;
+                }
+                finally
+                {
+                    if (registeredSet.IsCreated) registeredSet.Dispose();
+                }
+            }
+            finally
+            {
+                if (updateTargets.IsCreated) updateTargets.Dispose();
+            }
+        }
+    }
+}

@@ -1,23 +1,15 @@
-﻿// Runtime/Phase/Identity/IdentityIndex.cs
-using System;
+﻿using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 
 namespace ECSave.Internal
 {
-    /// <summary>
-    /// 識別キーの照合・重複検出（9章）。
-    /// 正準キーはアリーナに格納し、`NativeParallelMultiHashMap<ulong, int>` で索引する（9.1節）。
-    /// A-18 の実測：100k で add 1.9 ms / lookup 2.1 ms、Burst 互換。
-    /// </summary>
     public struct IdentityIndex : IDisposable
     {
         private NativeList<byte> _arena;
         private NativeList<IdentityEntry> _entries;
         private NativeParallelMultiHashMap<ulong, int> _buckets;
-
-        /// <summary>識別型の数（衝突判定に使う）。</summary>
         private int _typeCount;
 
         public IdentityIndex(int initialCapacity, int typeCount, Allocator allocator)
@@ -31,7 +23,6 @@ namespace ECSave.Internal
         public bool IsCreated => _arena.IsCreated;
         public int Count => _entries.Length;
 
-        /// <summary>World 側のエントリを追加する（9.2節）。</summary>
         public unsafe int AddWorldEntry(uint typeIndex, byte* key, int length, Entity entity)
         {
             EnsureTypeIndex(typeIndex);
@@ -49,7 +40,6 @@ namespace ECSave.Internal
             return entryIndex;
         }
 
-        /// <summary>SaveData 側のエントリを追加する（9.3節）。</summary>
         public unsafe int AddSaveEntry(uint typeIndex, byte* key, int length, int persistentId)
         {
             EnsureTypeIndex(typeIndex);
@@ -67,10 +57,6 @@ namespace ECSave.Internal
             return entryIndex;
         }
 
-        /// <summary>
-        /// World 側のキーに一致する SaveData 側エントリを 1 つ返す（9.4節）。
-        /// 一致しなければ false。
-        /// </summary>
         public unsafe bool TryMatchSaveEntry(uint typeIndex, byte* key, int length, out int saveEntryIndex)
         {
             saveEntryIndex = -1;
@@ -82,75 +68,78 @@ namespace ECSave.Internal
             do
             {
                 ref var e = ref _entries.ElementAt(entryIndex);
-                if (e.TypeIndex == typeIndex && KeyEquals(in e, key, length))
+                if (e.TypeIndex == typeIndex && !e.IsWorldSide && KeyEquals(in e, key, length))
                 {
-                    // SaveData 側エントリのみを返す
-                    if (!e.IsWorldSide)
-                    {
-                        saveEntryIndex = entryIndex;
-                        return true;
-                    }
+                    saveEntryIndex = entryIndex;
+                    return true;
                 }
             } while (_buckets.TryGetNextValue(out entryIndex, ref it));
 
             return false;
         }
 
-        /// <summary>
-        /// World 側エントリの重複を検出する（9.2節）。
-        /// 一致する別エントリが既にあれば true。
-        /// </summary>
+        public unsafe bool TryMatchWorldEntity(uint typeIndex, byte* key, int length, out Entity worldEntity)
+        {
+            worldEntity = Entity.Null;
+            ulong hash = HashKey(typeIndex, key, length);
+
+            if (!_buckets.TryGetFirstValue(hash, out int entryIndex, out var it))
+                return false;
+
+            do
+            {
+                ref var e = ref _entries.ElementAt(entryIndex);
+                if (e.TypeIndex == typeIndex && e.IsWorldSide && KeyEquals(in e, key, length))
+                {
+                    worldEntity = e.WorldEntity;
+                    return true;
+                }
+            } while (_buckets.TryGetNextValue(out entryIndex, ref it));
+
+            return false;
+        }
+
+        public unsafe int CountWorldMatches(uint typeIndex, byte* key, int length)
+        {
+            ulong hash = HashKey(typeIndex, key, length);
+            int n = 0;
+
+            if (!_buckets.TryGetFirstValue(hash, out int entryIndex, out var it))
+                return 0;
+
+            do
+            {
+                ref var e = ref _entries.ElementAt(entryIndex);
+                if (e.TypeIndex == typeIndex && e.IsWorldSide && KeyEquals(in e, key, length))
+                    n++;
+            } while (_buckets.TryGetNextValue(out entryIndex, ref it));
+
+            return n;
+        }
+
+        public unsafe int CountSaveMatches(uint typeIndex, byte* key, int length)
+        {
+            ulong hash = HashKey(typeIndex, key, length);
+            int n = 0;
+
+            if (!_buckets.TryGetFirstValue(hash, out int entryIndex, out var it))
+                return 0;
+
+            do
+            {
+                ref var e = ref _entries.ElementAt(entryIndex);
+                if (e.TypeIndex == typeIndex && !e.IsWorldSide && KeyEquals(in e, key, length))
+                    n++;
+            } while (_buckets.TryGetNextValue(out entryIndex, ref it));
+
+            return n;
+        }
+
         public unsafe bool HasWorldConflict(uint typeIndex, byte* key, int length)
-        {
-            ulong hash = HashKey(typeIndex, key, length);
-            if (!_buckets.TryGetFirstValue(hash, out int entryIndex, out var it))
-                return false;
+            => CountWorldMatches(typeIndex, key, length) >= 1;
 
-            do
-            {
-                ref var e = ref _entries.ElementAt(entryIndex);
-                if (e.IsWorldSide && e.TypeIndex == typeIndex && KeyEquals(in e, key, length))
-                    return true;
-            } while (_buckets.TryGetNextValue(out entryIndex, ref it));
-
-            return false;
-        }
-
-        /// <summary>SaveData 側エントリの重複を検出する（9.3節）。</summary>
         public unsafe bool HasSaveConflict(uint typeIndex, byte* key, int length)
-        {
-            ulong hash = HashKey(typeIndex, key, length);
-            if (!_buckets.TryGetFirstValue(hash, out int entryIndex, out var it))
-                return false;
-
-            do
-            {
-                ref var e = ref _entries.ElementAt(entryIndex);
-                if (!e.IsWorldSide && e.TypeIndex == typeIndex && KeyEquals(in e, key, length))
-                    return true;
-            } while (_buckets.TryGetNextValue(out entryIndex, ref it));
-
-            return false;
-        }
-
-        /// <summary>
-        /// 矛盾2 の検出用に、World Entity → SaveData エントリの逆引きを作る（9.4節）。
-        /// </summary>
-        public NativeParallelHashMap<Entity, int> BuildReverseMap(Allocator allocator)
-        {
-            var map = new NativeParallelHashMap<Entity, int>(_entries.Length, allocator);
-            for (int i = 0; i < _entries.Length; i++)
-            {
-                ref var e = ref _entries.ElementAt(i);
-                if (e.IsWorldSide) continue;
-                // 逆引きは World 側の情報と突き合わせて構築する（Phase 6 で完成）
-                // ここでは骨格のみ
-                _ = map;
-            }
-            return map;
-        }
-
-        // ── 内部 ─────────────────────────────────
+            => CountSaveMatches(typeIndex, key, length) >= 1;
 
         private unsafe int AppendKey(byte* key, int length)
         {
