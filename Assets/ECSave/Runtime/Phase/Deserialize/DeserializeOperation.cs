@@ -88,9 +88,9 @@ namespace ECSave.Internal
         }
 
         private LoadResult ApplyPhase(
-            ref PrephaseContext ctx,
-            NativeList<Entity> destroyTargets,
-            CancellationToken ct)
+    ref PrephaseContext ctx,
+    NativeList<Entity> destroyTargets,
+    CancellationToken ct)
         {
             var em = _world.EntityManager;
             var journal = new ApplyJournal(Allocator.Persistent);
@@ -123,6 +123,7 @@ namespace ECSave.Internal
                         {
                             var m = ctx.ModuleBySection[i];
                             if (m == null) continue;
+                            if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
                             var bodyView = GetSectionBody(ref ctx, i);
                             CreateEntitiesForSection(
@@ -149,6 +150,7 @@ namespace ECSave.Internal
                         {
                             var m = ctx.ModuleBySection[i];
                             if (m == null) continue;
+                            if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
                             var bodyView = GetSectionBody(ref ctx, i);
                             m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
@@ -169,6 +171,20 @@ namespace ECSave.Internal
                         if (P4_StructuralChangePhase.Execute(ref ctx, _policy, em)
                             != SaveLoadErrorCode.None)
                             throw new InvalidOperationException("P4 removal failed");
+
+                        for (int i = 0; i < ctx.SectionTable.Count; i++)
+                        {
+                            var m = ctx.ModuleBySection[i];
+                            if (m == null) continue;
+                            if (m.SectionKind != SectionKind.ChunkComponent) continue;
+
+                            var bodyView = GetSectionBody(ref ctx, i);
+                            m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
+                        }
+
+                        if (P6_ChunkComponentRestorePhase.Execute(ref ctx, em)
+                            != SaveLoadErrorCode.None)
+                            throw new InvalidOperationException("P6 failed");
 
                         if (FaultInjector.ShouldFail("P5"))
                             throw new InvalidOperationException("Injected P5");

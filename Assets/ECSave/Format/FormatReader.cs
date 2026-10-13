@@ -92,7 +92,7 @@ namespace ECSave.Format
                 throw new FormatException(FormatError.CorruptedData, "section table out of range");
 
             var entries = (SectionEntry*)(_view.Pointer + tableStart);
-            // 各エントリの範囲・予約ビットを検証
+
             for (int i = 0; i < count; i++)
             {
                 ref var e = ref entries[i];
@@ -106,11 +106,15 @@ namespace ECSave.Format
                     throw new FormatException(FormatError.CorruptedData, $"section entry {i} unknown kind {(byte)e.Kind}");
             }
 
+            long nameHeapStart = tableEnd;
+            if (nameHeapStart < 0 || nameHeapStart > _view.Length)
+                throw new FormatException(FormatError.CorruptedData, "name heap out of range");
+
             return new SectionTable
             {
                 Entries = entries,
                 Count = count,
-                NameHeap = _view.Pointer + _header.HeaderSize,
+                NameHeap = _view.Pointer + nameHeapStart,
                 NameHeapLength = (int)_header.NameHeapLength,
             };
         }

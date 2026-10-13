@@ -75,6 +75,8 @@ namespace ECSave.Internal
                 if (b.Presence.IsCreated) b.Presence.Dispose();
                 if (b.Enabled.IsCreated) b.Enabled.Dispose();
                 if (b.BufferCounts.IsCreated) b.BufferCounts.Dispose();
+                if (b.AnchorEntities.IsCreated) b.AnchorEntities.Dispose();
+                if (b.AnchorValues.IsCreated) b.AnchorValues.Dispose();
             }
             _backups.Clear();
 

@@ -10,7 +10,9 @@ namespace ECSave.Internal
         public NativeList<Entity> Entities;
         public NativeList<byte> Values;
         public NativeList<byte> EnabledStates;
-        public NativeList<int> RecordLengths;  // 可変長時のみ。Length == Entities.Length
+        public NativeList<int> RecordLengths;
+        public NativeList<Entity> ChunkMemberEntities;
+        public NativeList<int> ChunkMemberOffsets;
         public int Stride;
         public bool IsVariableLength;
 
@@ -21,6 +23,8 @@ namespace ECSave.Internal
             Values = new NativeList<byte>(cap * Math.Max(stride, 1), allocator);
             EnabledStates = default;
             RecordLengths = default;
+            ChunkMemberEntities = default;
+            ChunkMemberOffsets = default;
             Stride = stride;
             IsVariableLength = false;
         }
@@ -29,6 +33,7 @@ namespace ECSave.Internal
         public int Count => Entities.IsCreated ? Entities.Length : 0;
         public bool HasEnabledStates => EnabledStates.IsCreated;
         public bool HasRecordLengths => RecordLengths.IsCreated;
+        public bool HasChunkMembers => ChunkMemberEntities.IsCreated;
 
         public void InitEnabledStates(Allocator allocator)
         {
@@ -43,7 +48,17 @@ namespace ECSave.Internal
             IsVariableLength = true;
         }
 
-        /// <summary>固定長モードで 1 レコード追加する。</summary>
+        public void InitChunkMemberStorage(Allocator allocator)
+        {
+            if (!ChunkMemberEntities.IsCreated)
+                ChunkMemberEntities = new NativeList<Entity>(256, allocator);
+            if (!ChunkMemberOffsets.IsCreated)
+            {
+                ChunkMemberOffsets = new NativeList<int>(64, allocator);
+                ChunkMemberOffsets.Add(0);
+            }
+        }
+
         public unsafe void Append(Entity entity, byte* value)
         {
             if (IsVariableLength)
@@ -56,10 +71,6 @@ namespace ECSave.Internal
             for (int i = 0; i < Stride; i++) dst[i] = value[i];
         }
 
-        /// <summary>
-        /// 可変長モードで 1 レコード（elementCount 個の要素）を追加する。
-        /// value は elementCount × Stride バイト。空 Buffer は elementCount=0、value=null 可。
-        /// </summary>
         public unsafe void AppendVariable(Entity entity, byte* value, int elementCount)
         {
             if (!IsVariableLength)
@@ -78,6 +89,21 @@ namespace ECSave.Internal
                 byte* dst = (byte*)Values.GetUnsafePtr() + start;
                 for (int i = 0; i < bytes; i++) dst[i] = value[i];
             }
+        }
+
+        public unsafe void AppendChunk(byte* value, Entity* members, int memberCount)
+        {
+            int stride = Stride;
+            int vs = Values.Length;
+            Values.ResizeUninitialized(vs + stride);
+            byte* vdst = (byte*)Values.GetUnsafePtr() + vs;
+            for (int i = 0; i < stride; i++) vdst[i] = value[i];
+
+            Entities.Add(members[0]);
+
+            for (int i = 0; i < memberCount; i++)
+                ChunkMemberEntities.Add(members[i]);
+            ChunkMemberOffsets.Add(ChunkMemberEntities.Length);
         }
 
         public void AppendEnabled(bool enabled)
@@ -105,10 +131,14 @@ namespace ECSave.Internal
             if (Values.IsCreated) Values.Dispose();
             if (EnabledStates.IsCreated) EnabledStates.Dispose();
             if (RecordLengths.IsCreated) RecordLengths.Dispose();
+            if (ChunkMemberEntities.IsCreated) ChunkMemberEntities.Dispose();
+            if (ChunkMemberOffsets.IsCreated) ChunkMemberOffsets.Dispose();
             Entities = default;
             Values = default;
             EnabledStates = default;
             RecordLengths = default;
+            ChunkMemberEntities = default;
+            ChunkMemberOffsets = default;
         }
     }
 }

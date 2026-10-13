@@ -1,0 +1,10 @@
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\bin\Debug\netstandard2.0\ECSave.SourceGenerator.deps.json
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\bin\Debug\netstandard2.0\ECSave.SourceGenerator.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\bin\Debug\netstandard2.0\ECSave.SourceGenerator.pdb
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.csproj.AssemblyReference.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.AssemblyInfoInputs.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.AssemblyInfo.cs
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.csproj.CoreCompileInputs.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator\obj\Debug\netstandard2.0\ECSave.SourceGenerator.pdb

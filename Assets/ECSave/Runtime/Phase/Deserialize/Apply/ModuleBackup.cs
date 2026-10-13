@@ -1,4 +1,5 @@
 ﻿using Unity.Collections;
+using Unity.Entities;
 
 namespace ECSave.Internal
 {
@@ -10,5 +11,8 @@ namespace ECSave.Internal
         public NativeArray<byte> Enabled;
         public NativeArray<int> BufferCounts;
         public int Count;
+        public NativeArray<Entity> AnchorEntities;
+        public NativeArray<byte> AnchorValues;
+        public int AnchorCount;
     }
 }

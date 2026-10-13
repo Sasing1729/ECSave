@@ -31,8 +31,8 @@ namespace ECSave.Internal
         /// TypeSectionId → TypeName のマップは SaveDefinition 側の情報を受け取る。
         /// </summary>
         public void ToLoadWarnings(
-            List<LoadWarning> output,
-            IReadOnlyDictionary<uint, string> typeNameMap)
+    List<LoadWarning> output,
+    IReadOnlyDictionary<uint, string> typeNameMap)
         {
             if (output == null) return;
             if (!_records.IsCreated) return;
@@ -40,8 +40,9 @@ namespace ECSave.Internal
             for (int i = 0; i < _records.Length; i++)
             {
                 var r = _records[i];
+
                 string typeName = null;
-                if (r.TypeSectionId != 0 && typeNameMap != null)
+                if (typeNameMap != null)
                     typeNameMap.TryGetValue(r.TypeSectionId, out typeName);
 
                 output.Add(new LoadWarning(

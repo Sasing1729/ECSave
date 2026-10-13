@@ -46,7 +46,10 @@ namespace ECSave.Internal
 
                 int totalUpperBound = 0;
                 for (int i = 0; i < n; i++)
+                {
+                    if (!_def.Modules[i].ContributesToIdOf) continue;
                     totalUpperBound += buffers[i].Count;
+                }
 
                 int initialCap = totalUpperBound > 0 ? totalUpperBound : 16;
 
@@ -57,6 +60,7 @@ namespace ECSave.Internal
                 {
                     for (int i = 0; i < n; i++)
                     {
+                        if (!_def.Modules[i].ContributesToIdOf) continue;
                         var entities = buffers[i].Entities;
                         for (int j = 0; j < entities.Length; j++)
                         {
@@ -65,6 +69,14 @@ namespace ECSave.Internal
                                 entityList.Add(e);
                         }
                     }
+
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (_def.Modules[i].ContributesToIdOf) continue;
+                        _def.Modules[i].FilterAfterIdOf(ref buffers[i], idOf);
+                    }
+
+                    AddSelections(em, idOf, entityList, ct);
 
                     int logicalEntityCount = entityList.Length;
 
@@ -88,6 +100,42 @@ namespace ECSave.Internal
             {
                 for (int i = 0; i < n; i++)
                     if (buffers[i].IsCreated) buffers[i].Dispose();
+            }
+        }
+
+        private void AddSelections(
+            EntityManager em,
+            NativeParallelHashMap<Entity, int> idOf,
+            NativeList<Entity> entityList,
+            CancellationToken ct)
+        {
+            var selections = _def.Selections;
+            if (selections == null || selections.Count == 0) return;
+
+            var selected = new NativeParallelHashSet<Entity>(64, Allocator.TempJob);
+            try
+            {
+                for (int i = 0; i < selections.Count; i++)
+                {
+                    if (ct.IsCancellationRequested) return;
+
+                    var sel = selections[i];
+                    var q = sel.BuildQuery(em);
+                    sel.ExtractSelected(q, em, selected);
+                }
+
+                foreach (var e in selected)
+                {
+                    if (e == Entity.Null) continue;
+                    if (!em.Exists(e)) continue;
+
+                    if (idOf.TryAdd(e, entityList.Length))
+                        entityList.Add(e);
+                }
+            }
+            finally
+            {
+                if (selected.IsCreated) selected.Dispose();
             }
         }
 

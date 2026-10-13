@@ -1,13 +1,12 @@
 ﻿namespace ECSave.Format
 {
-    /// <summary>ChunkComponent セクションの読み取り結果（6.4）。</summary>
     public unsafe struct ChunkComponentSectionView
     {
         public ChunkComponentSectionHeader Header;
-        public uint* MemberOffset;      // GroupCount+1 個（厳密単調増加、末尾＝メンバー総数）
-        public uint* MemberEntityIndex; // MemberOffset[GroupCount] 個
-        public uint* RecordOffset;      // 可変長時のみ、GroupCount+1 個
-        public byte* Records;           // 固定長: GroupCount × Stride、可変長: RecordOffset[GroupCount] バイト
+        public uint* MemberOffset;
+        public uint* MemberEntityIndex;
+        public uint* RecordOffset;
+        public byte* Records;
         public int RecordsLength;
     }
 
@@ -19,22 +18,20 @@
             var h = ChunkComponentSectionFormat.ReadHeader(ref r);
             ChunkComponentSectionFormat.ValidateFlags(h.Flags);
 
-            if (h.GroupCount == 0)
-                throw new FormatException(FormatError.CorruptedData, "GroupCount must be >= 1");
             if (h.GroupCount > ECSaveFormatConstants.MaxLogicalEntityCount)
-                throw new FormatException(FormatError.CorruptedData, $"GroupCount out of range: {h.GroupCount}");
+                throw new FormatException(FormatError.CorruptedData,
+                    $"GroupCount out of range: {h.GroupCount}");
 
             int groupCount = (int)h.GroupCount;
             bool isFixed = h.IsFixedLength;
 
-            // 1. MemberOffset (GroupCount+1)
             int moBytes = checked((groupCount + 1) * 4);
             if (!view.BoundsCheck(r.Offset, moBytes))
                 throw new FormatException(FormatError.CorruptedData, "MemberOffset out of range");
             uint* memberOffset = (uint*)r.ReadBytesPtr(moBytes);
-            ValidateMemberOffset(memberOffset, groupCount);
+            if (groupCount > 0)
+                ValidateMemberOffset(memberOffset, groupCount);
 
-            // 2. MemberEntityIndex (memberCount)
             uint memberCount = memberOffset[groupCount];
             if ((ulong)memberCount * 4 > int.MaxValue)
                 throw new FormatException(FormatError.CorruptedData, "MemberEntityIndex too large");
@@ -43,7 +40,6 @@
                 throw new FormatException(FormatError.CorruptedData, "MemberEntityIndex out of range");
             uint* memberEntityIndex = meiBytes > 0 ? (uint*)r.ReadBytesPtr(meiBytes) : null;
 
-            // 3. RecordOffset（可変長時）
             uint* recordOffset = null;
             if (!isFixed)
             {
@@ -53,7 +49,6 @@
                 recordOffset = (uint*)r.ReadBytesPtr(roBytes);
             }
 
-            // 4. Records
             int recordsLength = view.Length - r.Offset;
             byte* records = recordsLength > 0 ? view.Pointer + r.Offset : null;
 
@@ -66,7 +61,8 @@
             }
             else
             {
-                ValidateRecordOffset(recordOffset, groupCount, recordsLength);
+                if (groupCount > 0)
+                    ValidateRecordOffset(recordOffset, groupCount, recordsLength);
             }
 
             return new ChunkComponentSectionView

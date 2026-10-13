@@ -1,0 +1,15 @@
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\bin\Debug\net8.0\ECSave.SourceGenerator.Tests.deps.json
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\bin\Debug\net8.0\ECSave.SourceGenerator.Tests.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\bin\Debug\net8.0\ECSave.SourceGenerator.Tests.pdb
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\bin\Debug\net8.0\ECSave.SourceGenerator.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\bin\Debug\net8.0\ECSave.SourceGenerator.pdb
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.csproj.AssemblyReference.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.AssemblyInfoInputs.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.AssemblyInfo.cs
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.csproj.CoreCompileInputs.cache
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.S.B29926B0.Up2Date
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\refint\ECSave.SourceGenerator.Tests.dll
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ECSave.SourceGenerator.Tests.pdb
+C:\Users\ceasi\source\repos\ECSave.SourceGenerator\ECSave.SourceGenerator.Tests\obj\Debug\net8.0\ref\ECSave.SourceGenerator.Tests.dll
