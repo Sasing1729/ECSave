@@ -60,14 +60,12 @@ namespace ECSave.Internal
                 tdSizes[i] = (int)(*(uint*)(ctx.View.Pointer + oldOff[i]));
 
                 if (steps[i] == null)
-                {
                     newBodySize[i] = oldLen[i] - tdSizes[i];
-                }
                 else
                 {
-                    var bv = new ByteView(
-                        ctx.View.Pointer + oldOff[i] + tdSizes[i], oldLen[i] - tdSizes[i]);
-                    var r = new ByteReader(bv);
+                    var r = new ByteReader(new ByteView(
+                        ctx.View.Pointer + oldOff[i] + tdSizes[i],
+                        oldLen[i] - tdSizes[i]));
                     var h = CommonSectionFormat.ReadHeader(ref r);
                     int cnt = (int)h.Count;
                     bool he = (h.Flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
@@ -75,6 +73,7 @@ namespace ECSave.Internal
                     if (he) sz += (cnt + 7) / 8;
                     newBodySize[i] = (int)sz;
                 }
+
                 newLen[i] = tdSizes[i] + newBodySize[i];
             }
 
@@ -88,8 +87,7 @@ namespace ECSave.Internal
             for (int i = 0; i < n; i++)
             {
                 newOff[i] = cursor;
-                cursor += newLen[i];
-                cursor = AlignUp(cursor, 8);
+                cursor = AlignUp(cursor + newLen[i], 8);
             }
 
             int footerOff = cursor;
@@ -101,7 +99,6 @@ namespace ECSave.Internal
 
             UnsafeUtility.MemCpy(p, old, headerSize);
             *(ulong*)(p + 0x20) = (ulong)totalSize;
-
             UnsafeUtility.MemCpy(p + nameHeapOffset, old + ctx.Header.HeaderSize, nameHeapLen);
 
             for (int i = 0; i < n; i++)
@@ -110,8 +107,7 @@ namespace ECSave.Internal
                 var ne = e;
                 ne.Offset = (ulong)newOff[i];
                 ne.Length = (ulong)newLen[i];
-                if (steps[i] != null)
-                    ne.SchemaHash = ctx.ModuleBySection[i].SchemaHash;
+                if (steps[i] != null) ne.SchemaHash = ctx.ModuleBySection[i].SchemaHash;
 
                 var w = new FormatWriter(
                     p + tableOffset + i * ECSaveFormatConstants.SectionEntrySize,
@@ -124,12 +120,10 @@ namespace ECSave.Internal
                 UnsafeUtility.MemCpy(p + newOff[i], old + oldOff[i], tdSizes[i]);
 
                 if (steps[i] == null)
-                {
                     UnsafeUtility.MemCpy(
                         p + newOff[i] + tdSizes[i],
                         old + oldOff[i] + tdSizes[i],
                         newBodySize[i]);
-                }
                 else
                 {
                     var err = MigrateBody(
@@ -143,7 +137,7 @@ namespace ECSave.Internal
                 }
 
                 int end = newOff[i] + newLen[i];
-                int next = (i + 1 < n) ? newOff[i + 1] : footerOff;
+                int next = i + 1 < n ? newOff[i + 1] : footerOff;
                 for (int k = end; k < next; k++) p[k] = 0;
             }
 
@@ -164,20 +158,20 @@ namespace ECSave.Internal
         private static SaveLoadErrorCode MigrateBody(
             byte* src, int srcLen, byte* dst, int newStride, MigrationStepBase step)
         {
-            var sv = new ByteView(src, srcLen);
-            var r = new ByteReader(sv);
+            var r = new ByteReader(new ByteView(src, srcLen));
             uint cnt = r.ReadU32();
             uint flags = r.ReadU32();
             uint oldStride = r.ReadU32();
+            int count = (int)cnt;
             bool he = (flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
 
             int eiOff = r.Offset;
-            int eiSz = (int)cnt * 4;
+            int eiSz = count * 4;
             int ebOff = eiOff + eiSz;
-            int ebSz = he ? ((int)cnt + 7) / 8 : 0;
+            int ebSz = he ? (count + 7) / 8 : 0;
             int recOff = ebOff + ebSz;
 
-            var w = new FormatWriter(dst, 12 + eiSz + ebSz + (int)cnt * newStride);
+            var w = new FormatWriter(dst, 12 + eiSz + ebSz + count * newStride);
             w.WriteU32(cnt);
             w.WriteU32(flags);
             w.WriteU32((uint)newStride);
@@ -198,7 +192,7 @@ namespace ECSave.Internal
 
             byte* dstRec = dst + w.Offset;
 
-            for (int i = 0; i < (int)cnt; i++)
+            for (int i = 0; i < count; i++)
             {
                 byte* oldRec = src + recOff + i * (int)oldStride;
                 byte* newRec = dstRec + i * newStride;

@@ -1,5 +1,4 @@
-﻿// Runtime/Checksum/ChecksumCalculator.cs
-using ECSave.Format;
+﻿using ECSave.Format;
 using Unity.Collections;
 
 namespace ECSave.Internal

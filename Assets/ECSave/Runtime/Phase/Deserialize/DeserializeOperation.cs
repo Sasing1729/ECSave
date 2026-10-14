@@ -88,9 +88,9 @@ namespace ECSave.Internal
         }
 
         private LoadResult ApplyPhase(
-    ref PrephaseContext ctx,
-    NativeList<Entity> destroyTargets,
-    CancellationToken ct)
+            ref PrephaseContext ctx,
+            NativeList<Entity> destroyTargets,
+            CancellationToken ct)
         {
             var em = _world.EntityManager;
             var journal = new ApplyJournal(Allocator.Persistent);
@@ -106,6 +106,7 @@ namespace ECSave.Internal
 
                 var updateArray = new NativeArray<Entity>(
                     updateTargets.Length, Allocator.TempJob);
+
                 for (int i = 0; i < updateTargets.Length; i++)
                     updateArray[i] = updateTargets[i];
 
@@ -119,16 +120,8 @@ namespace ECSave.Internal
                         if (FaultInjector.ShouldFail("P3"))
                             throw new InvalidOperationException("Injected P3");
 
-                        for (int i = 0; i < ctx.SectionTable.Count; i++)
-                        {
-                            var m = ctx.ModuleBySection[i];
-                            if (m == null) continue;
-                            if (m.SectionKind == SectionKind.ChunkComponent) continue;
-
-                            var bodyView = GetSectionBody(ref ctx, i);
-                            CreateEntitiesForSection(
-                                bodyView, ctx.PersistentToEntity, journal, em);
-                        }
+                        CreateEntitiesForNonChunkSections(
+                            ref ctx, journal, em);
 
                         for (int i = 0; i < ctx.SectionTable.Count; i++)
                         {
@@ -146,41 +139,14 @@ namespace ECSave.Internal
                         if (FaultInjector.ShouldFail("P4"))
                             throw new InvalidOperationException("Injected P4");
 
-                        for (int i = 0; i < ctx.SectionTable.Count; i++)
-                        {
-                            var m = ctx.ModuleBySection[i];
-                            if (m == null) continue;
-                            if (m.SectionKind == SectionKind.ChunkComponent) continue;
-
-                            var bodyView = GetSectionBody(ref ctx, i);
-                            m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-                        }
-
-                        for (int i = 0; i < ctx.SectionTable.Count; i++)
-                        {
-                            ref var entry = ref ctx.SectionTable.Entries[i];
-                            if (entry.Kind != SectionKind.Identity) continue;
-
-                            var im = FindIdentity(ctx.Definition, entry.NameHash);
-                            if (im == null) continue;
-
-                            var bodyView = GetSectionBody(ref ctx, i);
-                            im.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-                        }
+                        ApplyNonChunkModules(ref ctx, em);
+                        ApplyIdentityModules(ref ctx, em);
 
                         if (P4_StructuralChangePhase.Execute(ref ctx, _policy, em)
                             != SaveLoadErrorCode.None)
                             throw new InvalidOperationException("P4 removal failed");
 
-                        for (int i = 0; i < ctx.SectionTable.Count; i++)
-                        {
-                            var m = ctx.ModuleBySection[i];
-                            if (m == null) continue;
-                            if (m.SectionKind != SectionKind.ChunkComponent) continue;
-
-                            var bodyView = GetSectionBody(ref ctx, i);
-                            m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-                        }
+                        ApplyChunkModules(ref ctx, em);
 
                         if (P6_ChunkComponentRestorePhase.Execute(ref ctx, em)
                             != SaveLoadErrorCode.None)
@@ -207,9 +173,11 @@ namespace ECSave.Internal
                     }
 
                     var warnings = new List<LoadWarning>();
-                    ctx.Warnings.ToLoadWarnings(warnings, BuildTypeNameMap(ref ctx));
+                    ctx.Warnings.ToLoadWarnings(
+                        warnings, BuildTypeNameMap(ref ctx));
 
-                    return LoadResult.Success(ctx.Header.LogicalEntityCount, warnings);
+                    return LoadResult.Success(
+                        ctx.Header.LogicalEntityCount, warnings);
                 }
                 finally
                 {
@@ -222,23 +190,96 @@ namespace ECSave.Internal
             }
             catch
             {
-                return LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+                return LoadResult.Failure(
+                    SaveLoadErrorCode.WorldModificationFailed);
             }
             finally
             {
                 journal.Dispose();
-                if (updateTargets.IsCreated) updateTargets.Dispose();
+
+                if (updateTargets.IsCreated)
+                    updateTargets.Dispose();
             }
         }
 
-        private static ByteView GetSectionBody(ref PrephaseContext ctx, int sectionIndex)
+        private static void CreateEntitiesForNonChunkSections(
+            ref PrephaseContext ctx,
+            ApplyJournal journal,
+            EntityManager em)
+        {
+            for (int i = 0; i < ctx.SectionTable.Count; i++)
+            {
+                var m = ctx.ModuleBySection[i];
+                if (m == null) continue;
+                if (m.SectionKind == SectionKind.ChunkComponent) continue;
+
+                var bodyView = GetSectionBody(ref ctx, i);
+                CreateEntitiesForSection(
+                    bodyView, ctx.PersistentToEntity, journal, em);
+            }
+        }
+
+        private static void ApplyNonChunkModules(
+            ref PrephaseContext ctx,
+            EntityManager em)
+        {
+            for (int i = 0; i < ctx.SectionTable.Count; i++)
+            {
+                var m = ctx.ModuleBySection[i];
+                if (m == null) continue;
+                if (m.SectionKind == SectionKind.ChunkComponent) continue;
+
+                var bodyView = GetSectionBody(ref ctx, i);
+                m.ApplySectionBody(
+                    bodyView, ctx.PersistentToEntity, em);
+            }
+        }
+
+        private static void ApplyIdentityModules(
+            ref PrephaseContext ctx,
+            EntityManager em)
+        {
+            for (int i = 0; i < ctx.SectionTable.Count; i++)
+            {
+                ref var entry = ref ctx.SectionTable.Entries[i];
+                if (entry.Kind != SectionKind.Identity) continue;
+
+                var im = FindIdentity(ctx.Definition, entry.NameHash);
+                if (im == null) continue;
+
+                var bodyView = GetSectionBody(ref ctx, i);
+                im.ApplySectionBody(
+                    bodyView, ctx.PersistentToEntity, em);
+            }
+        }
+
+        private static void ApplyChunkModules(
+            ref PrephaseContext ctx,
+            EntityManager em)
+        {
+            for (int i = 0; i < ctx.SectionTable.Count; i++)
+            {
+                var m = ctx.ModuleBySection[i];
+                if (m == null) continue;
+                if (m.SectionKind != SectionKind.ChunkComponent) continue;
+
+                var bodyView = GetSectionBody(ref ctx, i);
+                m.ApplySectionBody(
+                    bodyView, ctx.PersistentToEntity, em);
+            }
+        }
+
+        private static ByteView GetSectionBody(
+            ref PrephaseContext ctx,
+            int sectionIndex)
         {
             ref var entry = ref ctx.SectionTable.Entries[sectionIndex];
             var sectionView = new ByteView(
                 ctx.View.Pointer + (int)entry.Offset, (int)entry.Length);
 
             int tdSize = (int)(*(uint*)sectionView.Pointer);
-            return sectionView.Slice(tdSize, (int)entry.Length - tdSize);
+            return sectionView.Slice(
+                tdSize, (int)entry.Length - tdSize);
         }
 
         private static unsafe void CreateEntitiesForSection(
@@ -254,7 +295,8 @@ namespace ECSave.Internal
             {
                 uint pid = v.EntityIndex[k];
                 if (pid >= persistentToEntity.Length)
-                    throw new FormatException(FormatError.ValidationFailed,
+                    throw new FormatException(
+                        FormatError.ValidationFailed,
                         "persistent id out of range");
 
                 if (persistentToEntity[(int)pid] == Entity.Null)
@@ -266,26 +308,34 @@ namespace ECSave.Internal
             }
         }
 
-        private static IdentityModule FindIdentity(SaveDefinition def, ulong nameHash)
+        private static IdentityModule FindIdentity(
+            SaveDefinition def,
+            ulong nameHash)
         {
             if (def.Identities == null) return null;
+
             for (int i = 0; i < def.Identities.Count; i++)
             {
                 var m = def.Identities[i];
                 if (SchemaHashCore.HashUtf8(m.FullTypeName) == nameHash)
                     return m;
             }
+
             return null;
         }
 
-        private static Dictionary<uint, string> BuildTypeNameMap(ref PrephaseContext ctx)
+        private static Dictionary<uint, string> BuildTypeNameMap(
+            ref PrephaseContext ctx)
         {
             var map = new Dictionary<uint, string>();
+
             for (int i = 0; i < ctx.SectionTable.Count; i++)
             {
                 var m = ctx.ModuleBySection[i];
-                if (m != null) map[(uint)i] = m.FullTypeName;
+                if (m != null)
+                    map[(uint)i] = m.FullTypeName;
             }
+
             return map;
         }
     }
