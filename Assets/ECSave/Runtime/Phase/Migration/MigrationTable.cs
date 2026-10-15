@@ -65,6 +65,9 @@ namespace ECSave.Internal
                     $"Migration already registered for New={key.NewTypeNameHash:X16}, Old={key.OldSchemaHash:X16}");
 
             _byKey.Add(key, step);
+
+            if (step.NewTypeName != null)
+                _typeNameByHash[step.NewTypeNameHash] = step.NewTypeName;
         }
 
         public void RegisterTypeName(ulong typeNameHash, string fullName)

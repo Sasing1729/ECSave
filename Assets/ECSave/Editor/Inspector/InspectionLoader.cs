@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using ECSave.Format;
+using ECSave.Internal;
 using FormatException = ECSave.Format.FormatException;
 
 namespace ECSave.EditorTools
@@ -24,6 +25,16 @@ namespace ECSave.EditorTools
             catch (Exception ex)
             {
                 inspection.ErrorMessage = "Failed to read file: " + ex.Message;
+                return inspection;
+            }
+
+            inspection.WasCompressed = SaveCompression.IsCompressed(data);
+            inspection.CompressedSize = data.Length;
+
+            var decompressErr = SaveCompression.TryDecompress(data, out data);
+            if (decompressErr != SaveLoadErrorCode.None)
+            {
+                inspection.ErrorMessage = "Failed to decompress: " + decompressErr;
                 return inspection;
             }
 
@@ -131,7 +142,6 @@ namespace ECSave.EditorTools
                 }
                 catch
                 {
-                    // 個別セクションの失敗は無視
                 }
             }
 

@@ -13,6 +13,17 @@ namespace ECSave.EditorTools
 
             EditorGUILayout.LabelField("File", inspection.FilePath);
             EditorGUILayout.LabelField("Size", inspection.FileSize + " bytes");
+
+            if (inspection.WasCompressed)
+            {
+                float ratio = inspection.FileSize > 0
+                    ? 100f * inspection.CompressedSize / inspection.FileSize
+                    : 0f;
+                EditorGUILayout.LabelField(
+                    "Compressed (LZ4)",
+                    inspection.CompressedSize + " bytes (" + ratio.ToString("F1") + "%)");
+            }
+
             EditorGUILayout.LabelField("Entities", inspection.LogicalEntityCount.ToString());
             EditorGUILayout.LabelField("Sections", inspection.Sections.Length.ToString());
 

@@ -9,6 +9,7 @@ namespace ECSave.Internal
     /// </summary>
     public abstract class MigrationStepBase
     {
+        public virtual string NewTypeName => null;
         /// <summary>
         /// この Migration が対象とする新型の完全修飾名ハッシュ（11.1節）。
         /// MigrationTable のキーの第1要素。

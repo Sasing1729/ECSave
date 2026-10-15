@@ -32,9 +32,10 @@ namespace ECSave
 
         public void RegisterIdentity<T>() where T : unmanaged, IComponentData { }
 
-        public void RegisterMigration<TMigration>() where TMigration : MigrationStepBase, new()
+        public void RegisterMigration<TMigration>() where TMigration : class, new()
         {
-            _migrations.Add(new TMigration());
+            if (new TMigration() is MigrationStepBase step)
+                _migrations.Add(step);
         }
 
         public void SelectEntityReference<T>(Func<T, Entity> field) where T : unmanaged, IComponentData { }

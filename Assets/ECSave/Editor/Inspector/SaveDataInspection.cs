@@ -6,6 +6,9 @@
         public byte[] Data;
         public int FileSize;
 
+        public bool WasCompressed;
+        public int CompressedSize;
+
         public bool Loaded;
         public string ErrorMessage;
 

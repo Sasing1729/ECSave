@@ -88,7 +88,7 @@ namespace ECSave.Internal
                         WriteSaveData(p, layout, entityList, idOf, buffers, em, ct);
                     }
 
-                    return SaveResult.Success(result);
+                    return SaveResult.Success(SaveCompression.Compress(result));
                 }
                 finally
                 {

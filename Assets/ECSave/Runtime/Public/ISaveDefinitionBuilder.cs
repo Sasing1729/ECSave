@@ -1,5 +1,4 @@
 ﻿using System;
-using ECSave.Internal;
 using Unity.Entities;
 
 namespace ECSave
@@ -11,7 +10,7 @@ namespace ECSave
         SaveDefinitionBuilder<T> RegisterSharedComponent<T>() where T : unmanaged, ISharedComponentData;
         SaveDefinitionBuilder<T> RegisterChunkComponent<T>() where T : unmanaged, IComponentData;
         void RegisterIdentity<T>() where T : unmanaged, IComponentData;
-        void RegisterMigration<TMigration>() where TMigration : MigrationStepBase, new();
+        void RegisterMigration<TMigration>() where TMigration : class, new();
         void SelectEntityReference<T>(Func<T, Entity> field) where T : unmanaged, IComponentData;
         void SelectEntityReferences<T>(Func<T, Entity> field) where T : unmanaged, IBufferElementData;
         void GameDataVersion(int version);

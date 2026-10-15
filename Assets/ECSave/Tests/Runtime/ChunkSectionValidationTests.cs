@@ -65,7 +65,10 @@ namespace ECSave.Tests.Runtime
 
             var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
-            return save.Data;
+
+            var err = SaveCompression.TryDecompress(save.Data, out var raw);
+            Assert.AreEqual(SaveLoadErrorCode.None, err);
+            return raw;
         }
 
         private void RestartWorld()
