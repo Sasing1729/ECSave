@@ -7,6 +7,8 @@ namespace ECSave.Internal.Contract
     {
         private static readonly Dictionary<string, ISaveModuleBinder> s_binders = new();
 
+
+
         public static void Register(string scopeId, ISaveModuleBinder binder)
         {
             if (string.IsNullOrEmpty(scopeId))
