@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using ECSave.Format;
 using ECSave.Internal;
 using Unity.Entities;
 
@@ -11,6 +12,7 @@ namespace ECSave
         private readonly List<IdentityModule> _identities = new();
         private readonly List<SelectionModule> _selections = new();
         private readonly List<MigrationStepBase> _migrations = new();
+        private readonly Dictionary<string, string> _renamedFrom = new();
         private readonly List<string> _warnings = new();
 
         private int _gameDataVersion = 1;
@@ -91,7 +93,24 @@ namespace ECSave
         internal void RecordWithAll(Type t, Type filter) { }
         internal void RecordWithAny(Type t, Type filter) { }
         internal void RecordWithNone(Type t, Type filter) { }
-        internal void RecordRenamedFrom(Type t, string oldName) { }
+
+        internal void RecordRenamedFrom(Type t, string oldName)
+        {
+            string newName = t.FullName.Replace('+', '.');
+
+            if (oldName == newName)
+                throw new SaveRegistrationException("ECSAVE-R006",
+                    $"RenamedFrom must differ from the current name: {newName}");
+
+            if (_renamedFrom.TryGetValue(oldName, out var existing))
+            {
+                if (existing == newName) return;
+                throw new SaveRegistrationException("ECSAVE-R007",
+                    $"RenamedFrom '{oldName}' is already mapped to '{existing}'");
+            }
+
+            _renamedFrom.Add(oldName, newName);
+        }
 
         internal SaveDefinition Build()
         {
@@ -102,10 +121,16 @@ namespace ECSave
                 _gameDataVersion,
                 _worldId);
 
-            if (_migrations.Count > 0)
+            if (_migrations.Count > 0 || _renamedFrom.Count > 0)
             {
                 var table = new MigrationTable();
                 foreach (var step in _migrations) table.Register(step);
+                foreach (var kv in _renamedFrom)
+                    table.RegisterRenamed(
+                        SchemaHashCore.HashUtf8(kv.Key),
+                        SchemaHashCore.HashUtf8(kv.Value),
+                        kv.Key,
+                        kv.Value);
                 def.Migrations = table;
             }
             return def;

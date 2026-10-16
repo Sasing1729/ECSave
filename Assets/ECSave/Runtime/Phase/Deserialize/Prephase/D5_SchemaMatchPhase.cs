@@ -7,8 +7,17 @@ namespace ECSave.Internal
     {
         public static SaveLoadErrorCode Execute(ref PrephaseContext ctx)
         {
+            var def = ctx.Definition;
             int count = ctx.SectionTable.Count;
             ctx.ModuleBySection = new SaveTypeModule[count];
+
+            int moduleCount = def.Modules.Count;
+            var hashes = new ulong[moduleCount];
+            for (int k = 0; k < moduleCount; k++)
+                hashes[k] = SchemaHashCore.HashUtf8(def.Modules[k].FullTypeName);
+
+            var claimed = new bool[moduleCount];
+            var table = def.Migrations;
 
             for (int i = 0; i < count; i++)
             {
@@ -17,8 +26,12 @@ namespace ECSave.Internal
                 if (entry.Kind == SectionKind.Identity)
                     continue;
 
-                var m = FindModuleByNameHash(ctx.Definition, entry.NameHash);
-                if (m == null)
+                int idx = IndexOf(hashes, entry.NameHash);
+                if (idx < 0 && table != null
+                    && table.TryResolveRenamed(entry.NameHash, out ulong renamedHash))
+                    idx = IndexOf(hashes, renamedHash);
+
+                if (idx < 0)
                 {
                     ctx.Warnings.Add(WarningRecord.Create(
                         LoadWarningKind.UnknownSectionIgnored,
@@ -26,8 +39,13 @@ namespace ECSave.Internal
                     continue;
                 }
 
+                var m = def.Modules[idx];
                 if (m.SectionKind != entry.Kind)
                     return SaveLoadErrorCode.SchemaMismatch;
+
+                if (claimed[idx])
+                    return SaveLoadErrorCode.SchemaMismatch;
+                claimed[idx] = true;
 
                 ctx.ModuleBySection[i] = m;
             }
@@ -35,15 +53,11 @@ namespace ECSave.Internal
             return SaveLoadErrorCode.None;
         }
 
-        private static SaveTypeModule FindModuleByNameHash(SaveDefinition def, ulong nameHash)
+        private static int IndexOf(ulong[] hashes, ulong nameHash)
         {
-            for (int i = 0; i < def.Modules.Count; i++)
-            {
-                var m = def.Modules[i];
-                if (SchemaHashCore.HashUtf8(m.FullTypeName) == nameHash)
-                    return m;
-            }
-            return null;
+            for (int i = 0; i < hashes.Length; i++)
+                if (hashes[i] == nameHash) return i;
+            return -1;
         }
     }
 }
