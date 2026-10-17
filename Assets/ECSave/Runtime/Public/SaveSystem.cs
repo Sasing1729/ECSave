@@ -17,8 +17,6 @@ namespace ECSave
 
         public SaveDefinition Definition => _definition;
 
-        // ── 同期実行（既存）────────────────────────
-
         public UniTask<SaveResult> SerializeAsync(
             World world,
             CancellationToken cancellationToken = default)
@@ -51,7 +49,7 @@ namespace ECSave
             }
             catch (Format.FormatException fe)
             {
-                return UniTask.FromResult(SaveResult.Failure(MapFormatError(fe.Error)));
+                return UniTask.FromResult(SaveResult.Failure(ErrorInfoMapper.Map(fe.Error)));
             }
             catch
             {
@@ -100,7 +98,7 @@ namespace ECSave
             }
             catch (Format.FormatException fe)
             {
-                return UniTask.FromResult(LoadResult.Failure(MapFormatError(fe.Error)));
+                return UniTask.FromResult(LoadResult.Failure(ErrorInfoMapper.Map(fe.Error)));
             }
             catch
             {
@@ -111,8 +109,6 @@ namespace ECSave
                 sys?.ReleaseOperation();
             }
         }
-
-        // ── 非同期実行（Phase 7d、呼び出しは即座に戻る）──
 
         public UniTask<SaveResult> SerializeAsyncNonBlocking(
             World world,
@@ -160,7 +156,7 @@ namespace ECSave
                     }
                     catch (Format.FormatException fe)
                     {
-                        tcs.TrySetResult(SaveResult.Failure(MapFormatError(fe.Error)));
+                        tcs.TrySetResult(SaveResult.Failure(ErrorInfoMapper.Map(fe.Error)));
                     }
                     catch
                     {
@@ -228,7 +224,7 @@ namespace ECSave
                     }
                     catch (Format.FormatException fe)
                     {
-                        tcs.TrySetResult(LoadResult.Failure(MapFormatError(fe.Error)));
+                        tcs.TrySetResult(LoadResult.Failure(ErrorInfoMapper.Map(fe.Error)));
                     }
                     catch
                     {
@@ -243,20 +239,6 @@ namespace ECSave
             });
 
             return tcs.Task;
-        }
-
-        private static SaveLoadErrorCode MapFormatError(Format.FormatError e)
-        {
-            switch (e)
-            {
-                case Format.FormatError.CorruptedData: return SaveLoadErrorCode.CorruptedData;
-                case Format.FormatError.VersionMismatch: return SaveLoadErrorCode.VersionMismatch;
-                case Format.FormatError.ChecksumMismatch: return SaveLoadErrorCode.ChecksumMismatch;
-                case Format.FormatError.ValidationFailed: return SaveLoadErrorCode.ValidationFailed;
-                case Format.FormatError.EntityReferenceInvalid: return SaveLoadErrorCode.EntityReferenceInvalid;
-                case Format.FormatError.SchemaMismatch: return SaveLoadErrorCode.SchemaMismatch;
-                default: return SaveLoadErrorCode.CorruptedData;
-            }
         }
     }
 }

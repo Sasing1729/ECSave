@@ -12,14 +12,16 @@ namespace ECSave.Internal
                 if (m == null) continue;
 
                 ref var entry = ref ctx.SectionTable.Entries[i];
-                var sectionView = new ByteView(
-                    ctx.View.Pointer + (int)entry.Offset, (int)entry.Length);
 
-                int tdSize = ReadTypeDescriptorSize(sectionView);
-                if (tdSize < 0 || tdSize > (int)entry.Length)
-                    return SaveLoadErrorCode.CorruptedData;
-
-                var bodyView = sectionView.Slice(tdSize, (int)entry.Length - tdSize);
+                ByteView bodyView;
+                try
+                {
+                    bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
+                }
+                catch (FormatException fe)
+                {
+                    return ErrorInfoMapper.Map(fe.Error);
+                }
 
                 var err = entry.Kind == SectionKind.ChunkComponent
                     ? ValidateChunkSection(bodyView, ctx.Header.LogicalEntityCount)
@@ -29,12 +31,6 @@ namespace ECSave.Internal
             }
 
             return SaveLoadErrorCode.None;
-        }
-
-        private static int ReadTypeDescriptorSize(ByteView sectionView)
-        {
-            var r = new ByteReader(sectionView);
-            return (int)r.ReadU32();
         }
 
         private static SaveLoadErrorCode ValidateEntityIndexRange(

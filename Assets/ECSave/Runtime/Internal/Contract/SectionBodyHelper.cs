@@ -2,6 +2,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
+using FormatError = ECSave.Format.FormatError;
 
 namespace ECSave.Internal
 {
@@ -77,14 +78,30 @@ namespace ECSave.Internal
         public static bool UnpackEnabled(byte* enabledBits, int index)
             => (enabledBits[index / 8] & (1 << (index % 8))) != 0;
 
+        public static ByteView SliceBody(ByteView sectionView)
+        {
+            var reader = new ByteReader(sectionView);
+            uint descriptorSize = reader.ReadU32();
+            if (descriptorSize > (uint)sectionView.Length)
+                throw new FormatException(
+                    FormatError.CorruptedData, "type descriptor size out of range");
+
+            return sectionView.Slice(
+                (int)descriptorSize, sectionView.Length - (int)descriptorSize);
+        }
+
+        public static ByteView GetSectionBody(ByteView file, in SectionEntry entry)
+            => SliceBody(file.Slice((int)entry.Offset, (int)entry.Length));
+
+        public static ByteView GetSectionBody(in PrephaseContext ctx, int sectionIndex)
+            => GetSectionBody(ctx.View, in ctx.SectionTable.Entries[sectionIndex]);
+
         public static void EnumerateSectionEntities(
             ByteView view, ulong offset, ulong length,
             NativeArray<Entity> persistentToEntity,
             NativeParallelHashSet<Entity> output)
         {
-            var sectionView = new ByteView(view.Pointer + (int)offset, (int)length);
-            int tdSize = (int)(*(uint*)sectionView.Pointer);
-            var bodyView = sectionView.Slice(tdSize, (int)length - tdSize);
+            var bodyView = SliceBody(view.Slice((int)offset, (int)length));
 
             var v = CommonSectionReader.Read(bodyView);
             int count = (int)v.Header.Count;

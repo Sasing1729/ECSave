@@ -16,7 +16,7 @@ namespace ECSave.Internal
                 if (m == null) continue;
                 if (m.SectionKind != SectionKind.ChunkComponent) continue;
 
-                var bodyView = GetSectionBody(ref ctx, s);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, s);
 
                 bool merged = false;
                 var err = RestoreSection(
@@ -36,15 +36,6 @@ namespace ECSave.Internal
             }
 
             return SaveLoadErrorCode.None;
-        }
-
-        private static ByteView GetSectionBody(ref PrephaseContext ctx, int sectionIndex)
-        {
-            ref var entry = ref ctx.SectionTable.Entries[sectionIndex];
-            var sectionView = new ByteView(
-                ctx.View.Pointer + (int)entry.Offset, (int)entry.Length);
-            int tdSize = (int)(*(uint*)sectionView.Pointer);
-            return sectionView.Slice(tdSize, (int)entry.Length - tdSize);
         }
 
         private static SaveLoadErrorCode RestoreSection(

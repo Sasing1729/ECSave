@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using ECSave.Format;
 using ECSave.Internal;
 
 namespace ECSave
@@ -58,6 +59,20 @@ namespace ECSave
             Migrations = null;
             Identities = identities;
             Selections = selections;
+        }
+
+        public IdentityModule FindIdentity(ulong nameHash)
+        {
+            if (Identities == null) return null;
+
+            for (int i = 0; i < Identities.Count; i++)
+            {
+                var m = Identities[i];
+                if (SchemaHashCore.HashUtf8(m.FullTypeName) == nameHash)
+                    return m;
+            }
+
+            return null;
         }
     }
 }

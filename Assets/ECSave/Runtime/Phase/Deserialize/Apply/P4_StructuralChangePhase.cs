@@ -56,11 +56,7 @@ namespace ECSave.Internal
                 if (m == null) continue;
                 if (m.RegistrationId != moduleIndex) continue;
 
-                ref var entry = ref ctx.SectionTable.Entries[s];
-                var sectionView = new ByteView(
-                    ctx.View.Pointer + (int)entry.Offset, (int)entry.Length);
-                int tdSize = (int)(*(uint*)sectionView.Pointer);
-                var bodyView = sectionView.Slice(tdSize, (int)entry.Length - tdSize);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, s);
 
                 var v = CommonSectionReader.Read(bodyView);
                 int count = (int)v.Header.Count;

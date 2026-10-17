@@ -128,7 +128,7 @@ namespace ECSave.Internal
                             ref var entry = ref ctx.SectionTable.Entries[i];
                             if (entry.Kind != SectionKind.Identity) continue;
 
-                            var bodyView = GetSectionBody(ref ctx, i);
+                            var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                             CreateEntitiesForSection(
                                 bodyView, ctx.PersistentToEntity, journal, em);
                         }
@@ -213,7 +213,7 @@ namespace ECSave.Internal
                 if (m == null) continue;
                 if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
-                var bodyView = GetSectionBody(ref ctx, i);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                 CreateEntitiesForSection(
                     bodyView, ctx.PersistentToEntity, journal, em);
             }
@@ -229,7 +229,7 @@ namespace ECSave.Internal
                 if (m == null) continue;
                 if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
-                var bodyView = GetSectionBody(ref ctx, i);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                 m.ApplySectionBody(
                     bodyView, ctx.PersistentToEntity, em);
             }
@@ -244,10 +244,10 @@ namespace ECSave.Internal
                 ref var entry = ref ctx.SectionTable.Entries[i];
                 if (entry.Kind != SectionKind.Identity) continue;
 
-                var im = FindIdentity(ctx.Definition, entry.NameHash);
+                var im = ctx.Definition.FindIdentity(entry.NameHash);
                 if (im == null) continue;
 
-                var bodyView = GetSectionBody(ref ctx, i);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                 im.ApplySectionBody(
                     bodyView, ctx.PersistentToEntity, em);
             }
@@ -263,23 +263,10 @@ namespace ECSave.Internal
                 if (m == null) continue;
                 if (m.SectionKind != SectionKind.ChunkComponent) continue;
 
-                var bodyView = GetSectionBody(ref ctx, i);
+                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                 m.ApplySectionBody(
                     bodyView, ctx.PersistentToEntity, em);
             }
-        }
-
-        private static ByteView GetSectionBody(
-            ref PrephaseContext ctx,
-            int sectionIndex)
-        {
-            ref var entry = ref ctx.SectionTable.Entries[sectionIndex];
-            var sectionView = new ByteView(
-                ctx.View.Pointer + (int)entry.Offset, (int)entry.Length);
-
-            int tdSize = (int)(*(uint*)sectionView.Pointer);
-            return sectionView.Slice(
-                tdSize, (int)entry.Length - tdSize);
         }
 
         private static unsafe void CreateEntitiesForSection(
@@ -306,22 +293,6 @@ namespace ECSave.Internal
                     journal.NoteCreated(e);
                 }
             }
-        }
-
-        private static IdentityModule FindIdentity(
-            SaveDefinition def,
-            ulong nameHash)
-        {
-            if (def.Identities == null) return null;
-
-            for (int i = 0; i < def.Identities.Count; i++)
-            {
-                var m = def.Identities[i];
-                if (SchemaHashCore.HashUtf8(m.FullTypeName) == nameHash)
-                    return m;
-            }
-
-            return null;
         }
 
         private static Dictionary<uint, string> BuildTypeNameMap(
