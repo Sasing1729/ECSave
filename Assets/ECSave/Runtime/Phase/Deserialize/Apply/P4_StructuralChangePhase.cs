@@ -54,6 +54,11 @@ namespace ECSave.Internal
             {
                 var m = ctx.ModuleBySection[s];
                 if (m == null) continue;
+
+                // === 防御的追加：チャンクセクションは Common 形式で読めない ===
+                if (m.SectionKind == SectionKind.ChunkComponent) continue;
+                // === ここまで ===
+
                 if (m.RegistrationId != moduleIndex) continue;
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, s);

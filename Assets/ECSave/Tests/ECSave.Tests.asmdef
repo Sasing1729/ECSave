@@ -1,6 +1,6 @@
 {
     "name": "ECSave.Tests",
-    "rootNamespace": "",
+    "rootNamespace": "ECSave",
     "references": [
         "Unity.Entities",
         "UnityEngine.TestRunner",

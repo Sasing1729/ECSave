@@ -1,5 +1,4 @@
-﻿// Runtime/Public/SaveLoadErrorCode.cs
-namespace ECSave
+﻿namespace ECSave
 {
     /// <summary>
     /// Save / Load の失敗理由（外部設計 13.3）。
@@ -24,5 +23,10 @@ namespace ECSave
         WorldModificationFailed = 14,
         Cancelled = 15,
         SerializationFailed = 16,
+
+        // SubScene 関連（Phase S1a 以降）
+        SceneLoadFailed = 17,
+        SceneContentMismatch = 18,
+        PrefabMigrationFailed = 19,
     }
 }

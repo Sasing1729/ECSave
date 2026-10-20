@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using ECSave.Format;
 using ECSave.Internal;
+using ECSave.Internal.SubScene;
+using ECSave.Phase.Deserialize.Apply;
+using ECSave.Phase.Deserialize.Prephase;
 using Unity.Collections;
 using Unity.Entities;
 using FormatError = ECSave.Format.FormatError;
@@ -58,14 +61,35 @@ namespace ECSave.Internal
                 err = D6_MigrationPhase.Execute(ref ctx);
                 if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
 
+                err = D4_5_SubSceneMatchPhase.Execute(
+                    _def.SubScene,
+                    ctx.SectionTable,
+                    ctx.View,
+                    out var subSceneState,
+                    out _);
+                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
+                ctx.SubSceneState = subSceneState;
+
                 err = D7_EntityRefValidationPhase.Execute(ref ctx);
                 if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
 
                 err = D8_RecordValidationPhase.Execute(ref ctx);
                 if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
 
+                err = D8_5_TombstoneValidationPhase.Execute(
+                    ref ctx, out var tombstoneEntries);
+                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
+                ctx.TombstoneSections = tombstoneEntries;
+
                 err = P1_PlanPhase.Execute(ref ctx, _policy);
                 if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
+
+                err = P1_5_SceneRestorePlanPhase.Execute(
+                    _def.SubScene,
+                    ctx.SubSceneState,
+                    out var restoreRequests);
+                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
+                ctx.SubSceneRestoreRequests = restoreRequests;
 
                 var destroyTargets = new NativeList<Entity>(16, Allocator.TempJob);
                 try
@@ -155,6 +179,23 @@ namespace ECSave.Internal
                         if (FaultInjector.ShouldFail("P5"))
                             throw new InvalidOperationException("Injected P5");
 
+                        var p35 = P3_5_SceneRestoreExecutionPhase.Execute(
+                            _def.SubScene,
+                            ctx.SubSceneRestoreRequests,
+                            ref ctx.Warnings);
+                        if (p35 != SaveLoadErrorCode.None)
+                        {
+                            if (!journal.Rollback(updateArray, em))
+                                return LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+                            success = true;
+                            return LoadResult.Failure(p35);
+                        }
+
+                        var p65 = P6_5_TombstoneApplyPhase.Execute(
+                            ref ctx, em, destroyTargets);
+                        if (p65 != SaveLoadErrorCode.None)
+                            throw new InvalidOperationException("P6.5 failed: " + p65);
+
                         if (FaultInjector.ShouldFail("P7"))
                             throw new InvalidOperationException("Injected P7");
 
@@ -230,8 +271,7 @@ namespace ECSave.Internal
                 if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                m.ApplySectionBody(
-                    bodyView, ctx.PersistentToEntity, em);
+                m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
             }
         }
 
@@ -248,8 +288,7 @@ namespace ECSave.Internal
                 if (im == null) continue;
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                im.ApplySectionBody(
-                    bodyView, ctx.PersistentToEntity, em);
+                im.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
             }
         }
 
@@ -264,8 +303,7 @@ namespace ECSave.Internal
                 if (m.SectionKind != SectionKind.ChunkComponent) continue;
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                m.ApplySectionBody(
-                    bodyView, ctx.PersistentToEntity, em);
+                m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
             }
         }
 

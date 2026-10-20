@@ -1,14 +1,17 @@
-﻿// Runtime/Format/Constants/SectionKind.cs
-namespace ECSave.Format
+﻿namespace ECSave.Format
 {
-    /// <summary>セクションの種別（内部設計 6.3）。</summary>
     public enum SectionKind : byte
     {
         Unknown = 0,
+
         Identity = 1,
         Component = 2,
         Buffer = 3,
         Shared = 4,
         ChunkComponent = 5,
+
+        SubSceneState = 6,
+        SubSceneTombstone = 7,
+        PrefabIdentity = 8,
     }
 }

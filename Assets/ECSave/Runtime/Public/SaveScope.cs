@@ -7,44 +7,78 @@ namespace ECSave
 {
     public abstract class SaveScope : ScriptableObject, IDisposable
     {
-        private SaveSystem _system;
-        private List<string> _warnings;
+        private SaveSystem _saveSystem;
+        private readonly List<string> _warnings = new List<string>();
         private bool _disposed;
 
-        public IReadOnlyList<string> RegistrationWarnings
-            => _warnings ?? (IReadOnlyList<string>)Array.Empty<string>();
+        public IReadOnlyList<string> RegistrationWarnings => _warnings;
 
         public SaveSystem GetSaveSystem()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(SaveScope));
-            if (_system != null) return _system;
+            if (_saveSystem != null) return _saveSystem;
 
-            var builder = new SaveDefinitionBuilderImpl();
+            var mainBuilder = new SaveDefinitionBuilderImpl();
+            Configure(mainBuilder);
 
-            Configure(builder);
+            var subSceneBuilder = new SubSceneDefinitionBuilderImpl();
+            ConfigureSubScene(subSceneBuilder);
 
-            var scopeId = GetType().FullName;
-            if (scopeId != null && GeneratedScopeRegistry.TryGet(scopeId, out var binder))
-            {
-                binder.BindModules(builder);
-            }
+            string rawId = GetScopeId();
+            string normalizedId = rawId != null ? rawId.Replace('+', '.') : rawId;
 
-            var definition = builder.Build();
-            _warnings = new List<string>(builder.Warnings);
-            _system = new SaveSystem(definition);
-            return _system;
+            ISaveModuleBinder mainBinder = null;
+            bool mainFound = false;
+            if (rawId != null && GeneratedScopeRegistry.TryGet(rawId, out mainBinder))
+                mainFound = true;
+            else if (normalizedId != null && normalizedId != rawId
+                     && GeneratedScopeRegistry.TryGet(normalizedId, out mainBinder))
+                mainFound = true;
+
+            if (mainFound && mainBinder != null)
+                mainBinder.BindModules(mainBuilder);
+
+            ISubSceneBinder subBinder = null;
+            bool subFound = false;
+            if (rawId != null && GeneratedScopeRegistry.TryGetSubScene(rawId, out subBinder))
+                subFound = true;
+            else if (normalizedId != null && normalizedId != rawId
+                     && GeneratedScopeRegistry.TryGetSubScene(normalizedId, out subBinder))
+                subFound = true;
+
+            if (subFound && subBinder != null)
+                subBinder.BindSubScene(subSceneBuilder);
+
+            var def = mainBuilder.Build();
+            def.SubScene = subSceneBuilder.Build();
+
+            _warnings.Clear();
+            _warnings.AddRange(mainBuilder.Warnings);
+
+            _saveSystem = new SaveSystem(def);
+            return _saveSystem;
+        }
+
+        protected abstract void Configure(ISaveDefinitionBuilder builder);
+
+        protected virtual void ConfigureSubScene(ISubSceneDefinitionBuilder builder) { }
+
+        protected virtual string GetScopeId()
+        {
+            return GetType().FullName;
         }
 
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
-            _system = null;
-            _warnings = null;
+            _saveSystem = null;
+            _warnings.Clear();
         }
 
-        protected abstract void Configure(ISaveDefinitionBuilder builder);
-
-        private void OnDestroy() => Dispose();
+        private void OnDestroy()
+        {
+            Dispose();
+        }
     }
 }

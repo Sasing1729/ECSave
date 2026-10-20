@@ -62,6 +62,11 @@ namespace ECSave
             if (_modules.Contains(module))
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Module already registered: {module.FullTypeName}");
+
+            // === 修正：RegistrationId をモジュール配列のインデックスに設定 ===
+            module.RegistrationId = _modules.Count;
+            // === ここまで ===
+
             _modules.Add(module);
         }
 
@@ -71,6 +76,11 @@ namespace ECSave
             if (_identities.Contains(module))
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Identity module already registered: {module.FullTypeName}");
+
+            // === 修正 ===
+            module.RegistrationId = _identities.Count;
+            // === ここまで ===
+
             _identities.Add(module);
         }
 
@@ -80,6 +90,11 @@ namespace ECSave
             if (_selections.Contains(module))
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Selection module already registered: {module.FullTypeName}.{module.FieldPath}");
+
+            // === 修正 ===
+            module.RegistrationId = _selections.Count;
+            // === ここまで ===
+
             _selections.Add(module);
         }
 

@@ -3,6 +3,8 @@ using System.Text;
 using System.Threading;
 using ECSave.Format;
 using ECSave.Internal;
+using ECSave.Internal.SubScene;
+using ECSave.Phase.Serialize;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -78,14 +80,20 @@ namespace ECSave.Internal
 
                     AddSelections(em, idOf, entityList, ct);
 
+                    var subSceneResult = S2_5_SubSceneCapturePhase.Execute(_def.SubScene);
+                    var tombstoneResult = S2_6_TombstoneCapturePhase.Execute(_def.SubScene, _world);
+
                     int logicalEntityCount = entityList.Length;
 
-                    var layout = ComputeLayout(logicalEntityCount, buffers, em, idOf);
+                    var layout = ComputeLayout(
+                        logicalEntityCount, buffers, em, idOf, subSceneResult, tombstoneResult);
 
                     byte[] result = new byte[layout.TotalSize];
                     fixed (byte* p = result)
                     {
-                        WriteSaveData(p, layout, entityList, idOf, buffers, em, ct);
+                        WriteSaveData(
+                            p, layout, entityList, idOf, buffers, em, ct,
+                            subSceneResult, tombstoneResult);
                     }
 
                     return SaveResult.Success(SaveCompression.Compress(result));
@@ -154,17 +162,24 @@ namespace ECSave.Internal
             public int FooterOffset;
             public int TotalSize;
             public int TotalSections;
+            public bool HasSubScene;
+            public bool HasTombstones;
         }
 
         private Layout ComputeLayout(
             int logicalEntityCount,
             SnapshotBuffer[] buffers,
             EntityManager em,
-            NativeParallelHashMap<Entity, int> idOf)
+            NativeParallelHashMap<Entity, int> idOf,
+            S2_5_SubSceneCapturePhase.Result subSceneResult,
+            S2_6_TombstoneCapturePhase.Result tombstoneResult)
         {
             int n = _def.Modules.Count;
             int m = _def.Identities != null ? _def.Identities.Count : 0;
-            int total = n + m;
+            bool hasSubScene = subSceneResult.HasSection;
+            int tombstoneCount = tombstoneResult.Captured.Count;
+            bool hasTombstones = tombstoneCount > 0;
+            int total = n + m + (hasSubScene ? 1 : 0) + tombstoneCount;
 
             var layout = new Layout
             {
@@ -175,6 +190,8 @@ namespace ECSave.Internal
                 NameOffsets = new int[total],
                 NameLengths = new int[total],
                 TotalSections = total,
+                HasSubScene = hasSubScene,
+                HasTombstones = hasTombstones,
             };
 
             int headerEnd = layout.HeaderFixedSize + layout.WorldIdLength;
@@ -194,6 +211,22 @@ namespace ECSave.Internal
                 int idx = n + i;
                 layout.NameOffsets[idx] = nameHeapCursor;
                 int len = Encoding.UTF8.GetByteCount(_def.Identities[i].FullTypeName);
+                layout.NameLengths[idx] = len;
+                nameHeapCursor += len;
+            }
+            if (hasSubScene)
+            {
+                int idx = n + m;
+                layout.NameOffsets[idx] = nameHeapCursor;
+                int len = Encoding.UTF8.GetByteCount(SubSceneStateSection.SectionName);
+                layout.NameLengths[idx] = len;
+                nameHeapCursor += len;
+            }
+            for (int i = 0; i < tombstoneCount; i++)
+            {
+                int idx = n + m + (hasSubScene ? 1 : 0) + i;
+                layout.NameOffsets[idx] = nameHeapCursor;
+                int len = Encoding.UTF8.GetByteCount(tombstoneResult.Captured[i].SectionName);
                 layout.NameLengths[idx] = len;
                 nameHeapCursor += len;
             }
@@ -229,6 +262,22 @@ namespace ECSave.Internal
                 cursor += layout.SectionLengths[idx];
                 cursor = AlignUp(cursor, 8);
             }
+            if (hasSubScene)
+            {
+                int idx = n + m;
+                layout.SectionOffsets[idx] = cursor;
+                layout.SectionLengths[idx] = subSceneResult.SectionBodySize;
+                cursor += layout.SectionLengths[idx];
+                cursor = AlignUp(cursor, 8);
+            }
+            for (int i = 0; i < tombstoneCount; i++)
+            {
+                int idx = n + m + (hasSubScene ? 1 : 0) + i;
+                layout.SectionOffsets[idx] = cursor;
+                layout.SectionLengths[idx] = tombstoneResult.Captured[i].SectionBodySize;
+                cursor += layout.SectionLengths[idx];
+                cursor = AlignUp(cursor, 8);
+            }
 
             layout.FooterOffset = cursor;
             layout.TotalSize = layout.FooterOffset + ECSaveFormatConstants.FooterSize;
@@ -249,7 +298,9 @@ namespace ECSave.Internal
             NativeParallelHashMap<Entity, int> idOf,
             SnapshotBuffer[] buffers,
             EntityManager em,
-            CancellationToken ct)
+            CancellationToken ct,
+            S2_5_SubSceneCapturePhase.Result subSceneResult,
+            S2_6_TombstoneCapturePhase.Result tombstoneResult)
         {
             int n = _def.Modules.Count;
             int m = _def.Identities != null ? _def.Identities.Count : 0;
@@ -318,6 +369,43 @@ namespace ECSave.Internal
                 };
                 writer.WriteSectionEntry(entry);
             }
+            if (layout.HasSubScene)
+            {
+                int idx = n + m;
+                var entry = new SectionEntry
+                {
+                    SectionId = (uint)idx,
+                    Kind = SectionKind.SubSceneState,
+                    Flags = 0,
+                    NameLength = (ushort)layout.NameLengths[idx],
+                    NameHash = SchemaHashCore.HashUtf8(SubSceneStateSection.SectionName),
+                    SchemaHash = 0,
+                    Offset = (ulong)layout.SectionOffsets[idx],
+                    Length = (ulong)layout.SectionLengths[idx],
+                    NameOffset = (uint)layout.NameOffsets[idx],
+                    Reserved = 0,
+                };
+                writer.WriteSectionEntry(entry);
+            }
+            for (int i = 0; i < tombstoneResult.Captured.Count; i++)
+            {
+                int idx = n + m + (layout.HasSubScene ? 1 : 0) + i;
+                var cap = tombstoneResult.Captured[i];
+                var entry = new SectionEntry
+                {
+                    SectionId = (uint)idx,
+                    Kind = SectionKind.SubSceneTombstone,
+                    Flags = 0,
+                    NameLength = (ushort)layout.NameLengths[idx],
+                    NameHash = SubSceneTombstoneSection.NameHashFor(cap.Handler.FullTypeName),
+                    SchemaHash = 0,
+                    Offset = (ulong)layout.SectionOffsets[idx],
+                    Length = (ulong)layout.SectionLengths[idx],
+                    NameOffset = (uint)layout.NameOffsets[idx],
+                    Reserved = 0,
+                };
+                writer.WriteSectionEntry(entry);
+            }
 
             writer.Seek(layout.NameHeapOffset);
             for (int i = 0; i < n; i++)
@@ -332,6 +420,24 @@ namespace ECSave.Internal
             for (int i = 0; i < m; i++)
             {
                 var nameBytes = Encoding.UTF8.GetBytes(_def.Identities[i].FullTypeName);
+                if (nameBytes.Length > 0)
+                {
+                    fixed (byte* np = nameBytes)
+                        writer.WriteBytes(np, nameBytes.Length);
+                }
+            }
+            if (layout.HasSubScene)
+            {
+                var nameBytes = Encoding.UTF8.GetBytes(SubSceneStateSection.SectionName);
+                if (nameBytes.Length > 0)
+                {
+                    fixed (byte* np = nameBytes)
+                        writer.WriteBytes(np, nameBytes.Length);
+                }
+            }
+            for (int i = 0; i < tombstoneResult.Captured.Count; i++)
+            {
+                var nameBytes = Encoding.UTF8.GetBytes(tombstoneResult.Captured[i].SectionName);
                 if (nameBytes.Length > 0)
                 {
                     fixed (byte* np = nameBytes)
@@ -381,6 +487,23 @@ namespace ECSave.Internal
                 }
 
                 im.WriteSectionBody(ref writer, em, idOf);
+            }
+            if (layout.HasSubScene)
+            {
+                if (ct.IsCancellationRequested) return;
+
+                int idx = n + m;
+                writer.Seek(layout.SectionOffsets[idx]);
+                SubSceneStateSection.Write(ref writer, subSceneResult.Scenes);
+            }
+            for (int i = 0; i < tombstoneResult.Captured.Count; i++)
+            {
+                if (ct.IsCancellationRequested) return;
+
+                int idx = n + m + (layout.HasSubScene ? 1 : 0) + i;
+                writer.Seek(layout.SectionOffsets[idx]);
+                var cap = tombstoneResult.Captured[i];
+                SubSceneTombstoneSection.Write(ref writer, cap.Keys, cap.Handler.KeyStride);
             }
 
             int checksumEnd = layout.FooterOffset;

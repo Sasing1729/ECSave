@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using ECSave.Format;
+using ECSave.Internal.SubScene;
+using ECSave.Phase.Deserialize.Prephase;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -9,18 +12,23 @@ namespace ECSave.Internal
     {
         public SaveDefinition Definition;
         public World World;
-
         public NativeArray<byte> NativeData;
         public ByteView View;
-
         public SaveHeader Header;
         public SectionTable SectionTable;
         public SaveTypeModule[] ModuleBySection;
-
         public NativeArray<Entity> PersistentToEntity;
         public WarningCollector Warnings;
-
         public NativeParallelHashSet<Entity>[] RegisteredTargets;
+
+        // === Phase S1a 追加 ===
+        public SubSceneStateSectionView? SubSceneState;
+        public SceneLoadRequest[] SubSceneRestoreRequests;
+        // === ここまで ===
+
+        // === Phase S1b 追加 ===
+        public IReadOnlyList<D8_5_TombstoneValidationPhase.TombstoneEntry> TombstoneSections;
+        // === ここまで ===
 
         public static PrephaseContext Create(SaveDefinition def, World world)
         {
@@ -50,6 +58,7 @@ namespace ECSave.Internal
             Warnings.Dispose();
             NativeData = default;
             PersistentToEntity = default;
+            TombstoneSections = null;
         }
     }
 }

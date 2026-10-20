@@ -1,11 +1,7 @@
-﻿// Runtime/Format/FormatReader.cs
-using System;
+﻿using System;
 
 namespace ECSave.Format
 {
-    /// <summary>
-    /// SaveData を読み取る（内部設計 6章）。すべての読み取りは ByteView 経由。
-    /// </summary>
     public unsafe struct FormatReader
     {
         private ByteView _view;
@@ -20,7 +16,6 @@ namespace ECSave.Format
         public SaveHeader Header => _header;
         public ByteView View => _view;
 
-        /// <summary>ヘッダを読む。範囲・Magic・予約ビットを検証する（6.2、6.9）。</summary>
         public SaveHeader ReadHeader()
         {
             if (_view.Length < ECSaveFormatConstants.HeaderFixedSize + ECSaveFormatConstants.FooterSize)
@@ -67,7 +62,6 @@ namespace ECSave.Format
             if (h.TotalLength != (ulong)_view.Length)
                 throw new FormatException(FormatError.CorruptedData, $"TotalLength mismatch: {h.TotalLength} vs actual {_view.Length}");
 
-            // WorldId は HeaderSize 直後
             long worldIdStart = (long)ECSaveFormatConstants.HeaderFixedSize;
             long worldIdEnd = worldIdStart + h.WorldIdLength;
             if (worldIdEnd > _view.Length)
@@ -82,7 +76,6 @@ namespace ECSave.Format
             return h;
         }
 
-        /// <summary>セクション表を読む（6.3）。</summary>
         public SectionTable ReadSectionTable()
         {
             int count = _header.SectionCount;
@@ -102,8 +95,9 @@ namespace ECSave.Format
                     throw new FormatException(FormatError.CorruptedData, $"section entry {i} NameLength too large");
                 if (e.Offset + e.Length > _header.TotalLength || e.Offset + e.Length < e.Offset)
                     throw new FormatException(FormatError.CorruptedData, $"section entry {i} range out of file");
-                if (e.Kind != SectionKind.Unknown && (byte)e.Kind > 5)
-                    throw new FormatException(FormatError.CorruptedData, $"section entry {i} unknown kind {(byte)e.Kind}");
+
+                // Kind の値域検査は行わない（内部設計 6.3「未知の Kind は Length で読み飛ばす」）。
+                // 登録種別との不一致検出は D5_SchemaMatchPhase が担う。
             }
 
             long nameHeapStart = tableEnd;
@@ -119,7 +113,6 @@ namespace ECSave.Format
             };
         }
 
-        /// <summary>型記述子ブロックを読む（6.10）。</summary>
         public TypeDescriptorBlock ReadTypeDescriptor(int sectionIndex)
         {
             var table = ReadSectionTable();
@@ -165,7 +158,6 @@ namespace ECSave.Format
             };
         }
 
-        /// <summary>セクション本体の位置と長さを返す（共通形式の前処理は各層が行う）。</summary>
         public void GetSectionRange(int sectionIndex, out ulong offset, out ulong length, out SectionKind kind)
         {
             var table = ReadSectionTable();
