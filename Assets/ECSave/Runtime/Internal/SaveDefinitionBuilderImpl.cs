@@ -82,6 +82,20 @@ namespace ECSave
 
         public void WorldId(string id)
         {
+            // WorldId の上限検証（Review #1）。
+            // フォーマット上 u16 で長さを持つため、1024 byte を超える値は
+            // 保存時に ushort オーバーフローを引き起こす。
+            if (id != null)
+            {
+                int byteCount = System.Text.Encoding.UTF8.GetByteCount(id);
+                if (byteCount > ECSaveFormatConstants.MaxWorldIdLength)
+                {
+                    throw new SaveRegistrationException(
+                        "ECSAVE-R003",
+                        $"WorldId exceeds {ECSaveFormatConstants.MaxWorldIdLength} UTF-8 bytes: " +
+                        $"{byteCount} bytes (value='{id}')");
+                }
+            }
             _worldId = id ?? string.Empty;
         }
 

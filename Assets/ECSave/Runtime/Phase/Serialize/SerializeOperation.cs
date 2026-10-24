@@ -1,13 +1,16 @@
-﻿using System;
-using System.Text;
-using System.Threading;
-using ECSave.Format;
+﻿using ECSave.Format;
 using ECSave.Internal;
 using ECSave.Internal.SubScene;
 using ECSave.Phase.Serialize;
+using System;
+using System.Text;
+using System.Threading;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
+using FormatError = ECSave.Format.FormatError;
+using FormatException = ECSave.Format.FormatException;
 
 namespace ECSave.Internal
 {
@@ -82,11 +85,6 @@ namespace ECSave.Internal
 
         public bool MoveNext(CancellationToken ct)
         {
-            // MoveNext は「次フェーズへ進む」を1呼び出しで完結させる。
-            // フレーム境界モードで SaveRuntimeSystem.OnUpdate から駆動される場合、
-            // 各フレームでジョブを .Complete() で待機するが、ECS のキャプチャジョブは
-            // 典型的には数マイクロ秒で完了するため、フレーム落ちは軽微。
-            // テストや同期呼び出し元は MoveNext 1回で次フェーズへ進むことを期待している。
             return MoveNextCore(ct, blockOnAsync: true);
         }
 
@@ -114,9 +112,6 @@ namespace ECSave.Internal
                         NotifyPhase(OperationPhase.S3_Seal);
                         DoEncodeAndSeal(ct);
                         _stage = Stage.Done;
-                        // 成功時のみ S4 を排出する。DoEncodeAndSeal は例外を投げれば
-                        // 外側 catch で Failure に変換されるが、将来 DoEncodeAndSeal が
-                        // Failure を返す経路が追加された場合の防御として残す。
                         if (_result.IsSuccess)
                             NotifyPhase(OperationPhase.S4_Complete);
                         return true;
@@ -244,13 +239,15 @@ namespace ECSave.Internal
                 }
             }
 
+            // Review #10: Selection で追加された Entity も _idOf に載せる。
+            AddSelections(em, _idOf, _entityList, ct);
+
+            // ChunkComponent 等 (ContributesToIdOf=false) は _idOf でフィルタ
             for (int i = 0; i < n; i++)
             {
                 if (_def.Modules[i].ContributesToIdOf) continue;
                 _def.Modules[i].FilterAfterIdOf(ref _buffers[i], _idOf);
             }
-
-            AddSelections(em, _idOf, _entityList, ct);
 
             return true;
         }
@@ -262,7 +259,9 @@ namespace ECSave.Internal
             int m = _def.Identities != null ? _def.Identities.Count : 0;
 
             var subSceneResult = S2_5_SubSceneCapturePhase.Execute(_def.SubScene);
-            var tombstoneResult = S2_6_TombstoneCapturePhase.Execute(_def.SubScene, _world);
+            // Review #5c: GetSaveSystem 後の MarkDestroyed も反映するため identities を渡す
+            var tombstoneResult = S2_6_TombstoneCapturePhase.Execute(
+                _def.SubScene, _world, _def.Identities);
             var prefabResult = S2_7_PrefabIdentityCapturePhase.Execute(
                 _def.SubScene, _entityList, _idOf);
 
@@ -272,15 +271,15 @@ namespace ECSave.Internal
                 logicalEntityCount, _buffers, em, _idOf,
                 subSceneResult, tombstoneResult, prefabResult);
 
-            byte[] result = new byte[layout.TotalSize];
-            fixed (byte* p = result)
-            {
-                WriteSaveData(
-                    p, layout, _entityList, _idOf, _buffers, em, ct,
-                    subSceneResult, tombstoneResult, prefabResult);
-            }
+            // P-3: LOH 圧力削減のため、素の SaveData は NativeArray に書き、
+            // 圧縮結果のみ byte[] にコピーする。
+            using var rawNative = new NativeArray<byte>(layout.TotalSize, Allocator.TempJob);
+            byte* p = (byte*)rawNative.GetUnsafePtr();
+            WriteSaveData(
+                p, layout, _entityList, _idOf, _buffers, em, ct,
+                subSceneResult, tombstoneResult, prefabResult);
 
-            _sealedBytes = SaveCompression.Compress(result);
+            _sealedBytes = SaveCompression.Compress(p, layout.TotalSize);
             _result = SaveResult.Success(_sealedBytes);
         }
 
@@ -385,7 +384,7 @@ namespace ECSave.Internal
             var layout = new Layout
             {
                 HeaderFixedSize = ECSaveFormatConstants.HeaderFixedSize,
-                WorldIdLength = Encoding.UTF8.GetByteCount(_def.WorldId),
+                WorldIdLength = Encoding.UTF8.GetByteCount(GetEffectiveWorldId()),
                 SectionOffsets = new int[total],
                 SectionLengths = new int[total],
                 NameOffsets = new int[total],
@@ -497,6 +496,13 @@ namespace ECSave.Internal
                 cursor = AlignUp(cursor, 8);
             }
 
+            // P-4: cursor は int 加算で蓄積されるため、2GB 近傍で折り返す可能性がある。
+            if (cursor < 0 || cursor > int.MaxValue - ECSaveFormatConstants.FooterSize)
+            {
+                throw new FormatException(FormatError.ValidationFailed,
+                    $"save layout out of int range: cursor={cursor}");
+            }
+
             layout.FooterOffset = cursor;
             layout.TotalSize = layout.FooterOffset + ECSaveFormatConstants.FooterSize;
             return layout;
@@ -543,7 +549,7 @@ namespace ECSave.Internal
             var writer = new FormatWriter(p, layout.TotalSize);
             writer.WriteHeader(header);
 
-            var worldIdBytes = Encoding.UTF8.GetBytes(_def.WorldId);
+            var worldIdBytes = Encoding.UTF8.GetBytes(GetEffectiveWorldId());
             if (worldIdBytes.Length > 0)
             {
                 fixed (byte* wid = worldIdBytes)
@@ -771,6 +777,13 @@ namespace ECSave.Internal
             writer.Seek(layout.FooterOffset);
             writer.WriteFooter(checksum);
         }
+
+        /// <summary>
+        /// Serialize 時にヘッダへ書く WorldId を返す。
+        /// <see cref="SaveDefinition.WorldId"/> が空の場合、World 名を暗黙の既定値として使う。
+        /// </summary>
+        private string GetEffectiveWorldId()
+            => string.IsNullOrEmpty(_def.WorldId) ? _world.Name : _def.WorldId;
 
         private static int AlignUp(int value, int alignment)
         {

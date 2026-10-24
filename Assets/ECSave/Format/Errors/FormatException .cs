@@ -1,5 +1,4 @@
-﻿// Runtime/Format/Errors/FormatException.cs
-using System;
+﻿using System;
 
 namespace ECSave.Format
 {

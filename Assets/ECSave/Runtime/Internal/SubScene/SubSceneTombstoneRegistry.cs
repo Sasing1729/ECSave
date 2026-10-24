@@ -1,6 +1,7 @@
-﻿using Unity.Collections;
-using Unity.Entities;
+﻿using ECSave.Format;
+using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Entities;
 
 namespace ECSave.Internal.SubScene
 {
@@ -52,36 +53,22 @@ namespace ECSave.Internal.SubScene
                 em.DestroyEntity(singleton);
         }
 
+        /// <summary>
+        /// 型名のハッシュ（Tombstone レコードの型識別子、および
+        /// Tombstone セクション名のハッシュ）。
+        ///
+        /// <para>
+        /// 旧実装は <c>SchemaHashCoreLite.HashUtf8</c> という専用実装を持っていたが、
+        /// <see cref="SchemaHashCore.HashUtf8"/> と完全に同一の仕様（FNV-1a 64bit、
+        /// UTF-8 エンコード）であるべきにも関わらず、サロゲートペアの扱いに差があった
+        /// （Lite 版は非 BMP 文字を 3 byte で誤エンコード）。
+        /// </para>
+        /// <para>
+        /// 冗長な実装を削除し、共通の <see cref="SchemaHashCore.HashUtf8"/> に委譲する。
+        /// 型名に非 BMP 文字（絵文字等）を含まない限り、ハッシュ値は旧実装と一致する。
+        /// </para>
+        /// </summary>
         public static ulong ComputeTypeHash(string fullTypeName)
-            => SchemaHashCoreLite.HashUtf8(fullTypeName);
-    }
-
-    internal static class SchemaHashCoreLite
-    {
-        public const ulong FnvOffsetBasis = 0xcbf29ce484222325UL;
-        public const ulong FnvPrime = 0x100000001b3UL;
-
-        public static ulong HashUtf8(string s, ulong seed = FnvOffsetBasis)
-        {
-            if (string.IsNullOrEmpty(s)) return seed;
-            ulong h = seed;
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                if (c < 0x80) { h ^= (byte)c; h *= FnvPrime; }
-                else if (c < 0x800)
-                {
-                    h ^= (byte)(0xC0 | (c >> 6)); h *= FnvPrime;
-                    h ^= (byte)(0x80 | (c & 0x3F)); h *= FnvPrime;
-                }
-                else
-                {
-                    h ^= (byte)(0xE0 | (c >> 12)); h *= FnvPrime;
-                    h ^= (byte)(0x80 | ((c >> 6) & 0x3F)); h *= FnvPrime;
-                    h ^= (byte)(0x80 | (c & 0x3F)); h *= FnvPrime;
-                }
-            }
-            return h;
-        }
+            => SchemaHashCore.HashUtf8(fullTypeName);
     }
 }

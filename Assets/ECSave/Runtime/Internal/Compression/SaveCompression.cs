@@ -1,4 +1,5 @@
 ﻿using ECSave.Format;
+using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
@@ -10,6 +11,10 @@ namespace ECSave.Internal
         public const int EnvelopeSize = 12;
         public const byte CodecLz4 = 1;
         public const int MinCompressLength = 256;
+
+        // Review #12d: 圧縮爆弾対策の絶対上限。
+        public const int MaxRawLength = 256 * 1024 * 1024;
+
         private const long MaxRatio = 255;
 
         private static uint ReadU32(byte[] d, int o)
@@ -49,6 +54,63 @@ namespace ECSave.Internal
             return result;
         }
 
+        /// <summary>
+        /// ポインタ入力からの圧縮（P-3）。
+        ///
+        /// <para>
+        /// 旧実装は呼び出し側で <c>new byte[TotalSize]</c> を確保して書き込み、
+        /// その後 <see cref="Compress(byte[])"/> で別の <c>byte[]</c> を作っていた。
+        /// 大規模データでは中間 <c>byte[]</c> が LOH 圧力を生む。
+        /// </para>
+        /// <para>
+        /// 本オーバーロードは生の <c>byte*</c> を入力に取り、圧縮が有益な場合は
+        /// 直接圧縮結果を返す。中間配列は圧縮が有益でない場合のみ確保する。
+        /// </para>
+        /// </summary>
+        public static byte[] Compress(byte* src, int srcLength)
+        {
+            if (src == null || srcLength <= 0)
+                return Array.Empty<byte>();
+
+            if (srcLength < MinCompressLength)
+            {
+                var raw = new byte[srcLength];
+                fixed (byte* d = raw)
+                    UnsafeUtility.MemCpy(d, src, srcLength);
+                return raw;
+            }
+
+            int bound = Lz4Block.MaxCompressedSize(srcLength);
+            using var tmp = new NativeArray<byte>(
+                bound, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+
+            int n = Lz4Block.Compress(src, srcLength, (byte*)tmp.GetUnsafePtr(), bound);
+
+            if (n < 0 || n + EnvelopeSize >= srcLength)
+            {
+                var raw = new byte[srcLength];
+                fixed (byte* d = raw)
+                    UnsafeUtility.MemCpy(d, src, srcLength);
+                return raw;
+            }
+
+            var result = new byte[n + EnvelopeSize];
+            result[0] = 0x45;
+            result[1] = 0x43;
+            result[2] = 0x53;
+            result[3] = 0x5A;
+            result[4] = CodecLz4;
+            uint len = (uint)srcLength;
+            result[8] = (byte)len;
+            result[9] = (byte)(len >> 8);
+            result[10] = (byte)(len >> 16);
+            result[11] = (byte)(len >> 24);
+
+            fixed (byte* d = result)
+                UnsafeUtility.MemCpy(d + EnvelopeSize, tmp.GetUnsafePtr(), n);
+            return result;
+        }
+
         public static SaveLoadErrorCode TryReadRawLength(byte[] d, out int rawLength)
         {
             rawLength = 0;
@@ -59,6 +121,7 @@ namespace ECSave.Internal
             long comp = d.Length - EnvelopeSize;
             if (len < (uint)(ECSaveFormatConstants.HeaderFixedSize + ECSaveFormatConstants.FooterSize)
                 || len > int.MaxValue
+                || len > (uint)MaxRawLength
                 || len > comp * MaxRatio + 64)
                 return SaveLoadErrorCode.CorruptedData;
 

@@ -4,6 +4,11 @@ using NUnit.Framework;
 
 namespace ECSave.Tests.Generator
 {
+    /// <summary>
+    /// 生成型の存在確認をダンプする診断用テスト。CI からは除外する。
+    /// </summary>
+    [TestFixture]
+    [Category("Verification")]
     public class GeneratorDumpTests
     {
         [Test]
@@ -40,7 +45,6 @@ namespace ECSave.Tests.Generator
                 if (!found) TestContext.WriteLine($"  {n}  →  NOT FOUND");
             }
 
-            // ECSave.Generated.* 名前空間を持つ型を全部ダンプ
             TestContext.WriteLine();
             TestContext.WriteLine("=== All types under ECSave.Generated.* ===");
             foreach (var a in UnityEngine.Assemblies.CurrentAssemblies.GetLoadedAssemblies())

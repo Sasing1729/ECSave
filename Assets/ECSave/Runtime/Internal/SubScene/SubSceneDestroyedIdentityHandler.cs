@@ -14,10 +14,8 @@ namespace ECSave.Internal.SubScene
         internal abstract ulong TypeHash { get; }
 
         public abstract IReadOnlyList<byte[]> Snapshot(World world);
-
         public abstract void RestoreToRegistry(
             EntityManager em, Entity singleton, IReadOnlyList<byte[]> keys);
-
         public abstract void CollectMatches(
             EntityManager em, Entity singleton, NativeList<Entity> output);
     }
@@ -77,10 +75,15 @@ namespace ECSave.Internal.SubScene
             int stride = KeyStride;
             var buf = SubSceneTombstoneRegistry.GetOrCreateBuffer(em, singleton);
 
+            // Review #5a: 既存キーとの重複を排除。
+            // Snapshot が重複を含む場合（同一 Save を 2 回ロードして再保存等）、
+            // D8_5 が ValidationFailed を返すため、保存前に弾く。
             for (int i = 0; i < keys.Count; i++)
             {
                 var key = keys[i];
                 if (key == null || key.Length != stride) continue;
+
+                if (ContainsKey(buf, s_typeHash, key, stride)) continue;
 
                 int oldLen = buf.Length;
                 buf.ResizeUninitialized(oldLen + 12 + stride);
@@ -90,6 +93,37 @@ namespace ECSave.Internal.SubScene
                 fixed (byte* src = key)
                     UnsafeUtility.MemCpy(dst + 12, src, stride);
             }
+        }
+
+        private static bool ContainsKey(
+            DynamicBuffer<SubSceneTombstoneByte> buf,
+            ulong typeHash, byte[] key, int stride)
+        {
+            if (buf.Length < 12) return false;
+
+            byte* basePtr = (byte*)buf.GetUnsafeReadOnlyPtr();
+            int total = buf.Length;
+            int pos = 0;
+
+            while (pos + 12 <= total)
+            {
+                ulong h = *(ulong*)(basePtr + pos);
+                int len = *(int*)(basePtr + pos + 8);
+                if (len < 0 || pos + 12 + len > total) break;
+
+                if (h == typeHash && len == stride)
+                {
+                    byte* existing = basePtr + pos + 12;
+                    bool eq = true;
+                    for (int b = 0; b < stride; b++)
+                    {
+                        if (existing[b] != key[b]) { eq = false; break; }
+                    }
+                    if (eq) return true;
+                }
+                pos += 12 + len;
+            }
+            return false;
         }
 
         public override void CollectMatches(
@@ -105,7 +139,6 @@ namespace ECSave.Internal.SubScene
             int stride = KeyStride;
             byte* ptr = (byte*)buf.GetUnsafeReadOnlyPtr();
 
-            // 1st pass: 自分の型のキーだけを連続領域に抽出
             var ourKeys = new NativeList<byte>(total, Allocator.TempJob);
             try
             {
@@ -130,7 +163,6 @@ namespace ECSave.Internal.SubScene
 
                 byte* keyPtr = (byte*)ourKeys.GetUnsafeReadOnlyPtr();
 
-                // 2nd pass: Entity を走査して一致するものを追加
                 using var query = em.CreateEntityQuery(ComponentType.ReadOnly<TIdentity>());
                 using var entities = query.ToEntityArray(Allocator.Temp);
                 if (entities.Length == 0) return;

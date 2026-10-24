@@ -39,8 +39,21 @@ namespace ECSave.Internal.SubScene
         public static string SectionNameFor(string identityFullTypeName)
             => SectionNamePrefix + identityFullTypeName;
 
+        /// <summary>
+        /// Tombstone セクション名のハッシュ。
+        ///
+        /// <para>
+        /// 旧実装は <c>SchemaHashCoreLite.HashUtf8</c> という専用実装を持っていたが、
+        /// <see cref="SchemaHashCore.HashUtf8"/> と完全に同一仕様であるべきにも関わらず、
+        /// サロゲートペアの扱いに差があった（Lite 版は非 BMP 文字を 3 byte で誤エンコード）。
+        /// </para>
+        /// <para>
+        /// 共通実装に委譲する。型名に非 BMP 文字（絵文字等）を含まない限り、
+        /// ハッシュ値は旧実装と一致する。
+        /// </para>
+        /// </summary>
         public static ulong NameHashFor(string identityFullTypeName)
-            => SchemaHashCoreLite.HashUtf8(SectionNameFor(identityFullTypeName));
+            => SchemaHashCore.HashUtf8(SectionNameFor(identityFullTypeName));
 
         public static SubSceneTombstoneSectionView Read(byte* pointer, int length)
         {

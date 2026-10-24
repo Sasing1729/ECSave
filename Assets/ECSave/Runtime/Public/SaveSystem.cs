@@ -58,6 +58,34 @@ namespace ECSave
             }
         }
 
+        /// <summary>
+        /// Serialize を実行する。
+        ///
+        /// <para>
+        /// <b>命名について</b>: 名前に <c>Async</c> を含むが、実装は
+        /// <b>メインスレッド上で同期的に実行</b>し、完了済みの
+        /// <see cref="Cysharp.Threading.Tasks.UniTask{T}"/> を返す
+        /// （<see cref="StreamingConsistencyMode.TimeBased"/> の場合）。
+        /// これは公開 API 境界を UniTask に統一するためのシグネチャ選択であり、
+        /// 真の非同期（フレーム跨ぎ）は <see cref="SerializeAsyncNonBlocking"/>
+        /// または <see cref="StreamingConsistencyMode.FrameBoundary"/> を
+        /// 使用すること（ADR-21）。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>ブロッキングの注意</b>: <see cref="StreamingConsistencyMode.FrameBoundary"/>
+        /// の場合、本メソッドが返す <see cref="UniTask{T}"/> に対して
+        /// <c>.GetAwaiter().GetResult()</c> を呼ぶと <b>メインスレッドがデッドロック</b>
+        /// する（PlayerLoop の完了通知を待つため）。呼び出し側は <c>await</c> で
+        /// 待機すること。
+        /// </para>
+        ///
+        /// <para>
+        /// <see cref="StreamingConsistencyMode.TimeBased"/>（既定）の場合は
+        /// 完了済みタスクを返すため、<c>.GetAwaiter().GetResult()</c> で
+        /// 即座に結果を取り出せる。
+        /// </para>
+        /// </summary>
         public UniTask<SaveResult> SerializeAsync(
             World world,
             CancellationToken cancellationToken = default)
@@ -184,6 +212,21 @@ namespace ECSave
             }
         }
 
+        /// <summary>
+        /// Deserialize を実行する。
+        ///
+        /// <para>
+        /// <b>命名について</b>: <see cref="SerializeAsync"/> と同様、
+        /// <see cref="StreamingConsistencyMode.TimeBased"/> では
+        /// メインスレッド上で同期的に実行し、完了済みタスクを返す。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>ブロッキングの注意</b>: <see cref="StreamingConsistencyMode.FrameBoundary"/>
+        /// の場合、<c>.GetAwaiter().GetResult()</c> はメインスレッドで
+        /// デッドロックする。呼び出し側は <c>await</c> で待機すること。
+        /// </para>
+        /// </summary>
         public UniTask<LoadResult> DeserializeAsync(
             World world,
             byte[] data,
@@ -333,6 +376,22 @@ namespace ECSave
             }
         }
 
+        /// <summary>
+        /// NonBlocking 版 Serialize。
+        ///
+        /// <para>
+        /// <b>命名について</b>: 名前は <c>NonBlocking</c> だが、実装は
+        /// <b>次の <c>PostLateUpdate</c> で全体を同期実行</b>する
+        /// （真の分散非同期ではない）。呼び出し元スレッドをブロックしない
+        /// という意味での "NonBlocking" であり、処理自体は 1 フレーム遅延の
+        /// 同期実行（ADR-21）。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>ブロッキングの注意</b>: 返り値の <c>.GetAwaiter().GetResult()</c>
+        /// はメインスレッドでデッドロックする。<c>await</c> で待機すること。
+        /// </para>
+        /// </summary>
         public UniTask<SaveResult> SerializeAsyncNonBlocking(
             World world,
             CancellationToken cancellationToken = default)
@@ -398,6 +457,12 @@ namespace ECSave
             return tcs.Task;
         }
 
+        /// <summary>
+        /// NonBlocking 版 Deserialize。<see cref="SerializeAsyncNonBlocking"/>
+        /// と同じく、次の <c>PostLateUpdate</c> で同期実行し、呼び出し元
+        /// スレッドをブロックしない。<c>.GetAwaiter().GetResult()</c> は
+        /// メインスレッドでデッドロックする。
+        /// </summary>
         public UniTask<LoadResult> DeserializeAsyncNonBlocking(
             World world,
             byte[] data,

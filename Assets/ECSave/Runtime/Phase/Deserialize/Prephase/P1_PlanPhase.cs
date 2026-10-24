@@ -8,6 +8,7 @@ namespace ECSave.Internal
     {
         public static SaveLoadErrorCode Execute(
             ref PrephaseContext ctx,
+            RestorationScope scope,
             DeletionPolicy policy)
         {
             BuildRegisteredTargets(ref ctx);
@@ -18,15 +19,33 @@ namespace ECSave.Internal
             int idCount = ctx.Definition.Identities.Count;
             var index = new IdentityIndex(1024, idCount, Allocator.TempJob);
 
+            // Review #7 / 設計書 9.2: World 側の索引は復元領域内の Entity のみで構築する。
+            // RestorationScope.Custom の場合、scope.Query の結果を集合化して渡す。
+            // RestorationScope.EntireWorld の場合はフィルタなし（default）。
+            NativeParallelHashSet<Entity> scopeFilter = default;
+            bool scopeFilterCreated = false;
+
             try
             {
                 var em = ctx.World.EntityManager;
+
+                if (!scope.IsEntireWorld)
+                {
+                    // scope.Query は SaveSystem.DeserializeAsync で事前検証されている前提。
+                    // ここでは有効なクエリとして扱う。
+                    scopeFilter = new NativeParallelHashSet<Entity>(256, Allocator.TempJob);
+                    scopeFilterCreated = true;
+
+                    using var scopeEntities = scope.Query.ToEntityArray(Allocator.TempJob);
+                    for (int i = 0; i < scopeEntities.Length; i++)
+                        scopeFilter.Add(scopeEntities[i]);
+                }
 
                 for (int t = 0; t < idCount; t++)
                 {
                     var im = ctx.Definition.Identities[t];
                     var q = im.BuildQuery(em);
-                    var err = im.BuildWorldIndex(em, q, ref index, (uint)im.RegistrationId);
+                    var err = im.BuildWorldIndex(em, q, ref index, (uint)im.RegistrationId, scopeFilter);
                     if (err != SaveLoadErrorCode.None) return err;
                 }
 
@@ -47,6 +66,8 @@ namespace ECSave.Internal
             }
             finally
             {
+                if (scopeFilterCreated && scopeFilter.IsCreated)
+                    scopeFilter.Dispose();
                 index.Dispose();
             }
         }

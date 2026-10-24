@@ -34,13 +34,47 @@ namespace ECSave.Phase.Serialize
             }
         }
 
-        public static Result Execute(SubSceneDefinition def, World world)
+        public static Result Execute(
+            SubSceneDefinition def,
+            World world,
+            IReadOnlyList<IdentityModule> identities = null)
         {
             var result = new Result();
             if (def == null || !def.HasTombstones) return result;
 
+            // Review #5c: def.DestroyedHandlers は SaveScope.GetSaveSystem() 時点の
+            // スナップショット。MarkDestroyed<T> が GetSaveSystem() より後に呼ばれると
+            // 空のままになり、Tombstone が一切保存されない。
+            // def 側が空ならグローバルレジストリから取得し、登録済み Identity でフィルタする。
+            IReadOnlyList<SubSceneDestroyedIdentityHandler> handlers = def.DestroyedHandlers;
+            if (handlers == null || handlers.Count == 0)
+            {
+                handlers = SubSceneTombstone.GetRegisteredHandlers();
+
+                if (identities != null && identities.Count > 0)
+                {
+                    var registered = new HashSet<string>(StringComparer.Ordinal);
+                    for (int i = 0; i < identities.Count; i++)
+                    {
+                        var im = identities[i];
+                        if (im != null && !string.IsNullOrEmpty(im.FullTypeName))
+                            registered.Add(im.FullTypeName);
+                    }
+
+                    var filtered = new List<SubSceneDestroyedIdentityHandler>();
+                    for (int i = 0; i < handlers.Count; i++)
+                    {
+                        var h = handlers[i];
+                        if (h != null && registered.Contains(h.FullTypeName))
+                            filtered.Add(h);
+                    }
+                    handlers = filtered;
+                }
+            }
+
+            if (handlers == null || handlers.Count == 0) return result;
+
             var captured = new List<CapturedHandler>();
-            var handlers = def.DestroyedHandlers;
 
             for (int i = 0; i < handlers.Count; i++)
             {

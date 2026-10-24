@@ -21,11 +21,13 @@ namespace Game.MinimalE2E
         public override string[] FieldNames => s_fieldNames;
 
         public override EntityQuery BuildQuery(EntityManager em)
-            => em.CreateEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<Health>() },
-                Options = EntityQueryOptions.IgnoreComponentEnabledState,
-            });
+            => ModuleQueryCache.GetOrCreate(em, this, () =>
+                em.CreateEntityQuery(new EntityQueryDesc
+                {
+                    All = new[] { ComponentType.ReadOnly<Health>() },
+                    Options = EntityQueryOptions.IgnoreComponentEnabledState
+                            | EntityQueryOptions.IncludeDisabledEntities,
+                }));
 
         protected override unsafe void WriteValue(Entity entity, EntityManager em, byte* value)
         {

@@ -78,6 +78,20 @@ namespace ECSave.Internal
             }
         }
 
+        /// <summary>
+        /// Review #11: Domain Reload 無効時（Enter Play Mode Options）の
+        /// 静的状態リセット。PlayerLoop は Play モード終了時に Unity が再構築するが、
+        /// <c>s_installed</c>（managed static）は残るため、2 回目以降の Play で
+        /// Install が発火しなくなる。
+        /// </summary>
+        [UnityEngine.RuntimeInitializeOnLoadMethod(
+            UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        private static void ResetOnLoad()
+        {
+            s_installed = false;
+            s_active.Clear();
+        }
+
         internal static void ResetForTests()
         {
             s_active.Clear();

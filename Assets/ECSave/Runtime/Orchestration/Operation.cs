@@ -66,6 +66,16 @@ namespace ECSave.Internal
             {
                 UnityEngine.Debug.LogError(
                     $"[ECSave] Operation drive threw ({Kind}): {ex}");
+
+                // 駆動関数が投げた例外を「エラー発生」として記録する。
+                // ここでは具体的な SaveLoadErrorCode が不明なため ErrorInfo.None
+                // （Code = None）を暫定値として置く。実際の結果は
+                // SerializeOperation / DeserializeOperation 側が
+                // SaveResult.Failure / LoadResult.Failure として返す。
+                //
+                // この PendingError は将来、操作の失敗理由を
+                // Operation 経由で集約する用途のために予約されている。
+                // 現状は HasPendingError = true の記録のみが目的。
                 SetPendingError(ErrorInfo.None);
                 done = true;
             }
@@ -96,7 +106,7 @@ namespace ECSave.Internal
         public void MarkComplete() => State = OperationState.Completed;
 
         /// <summary>
-        /// World 破棄時に呼ぶ。既存互換: WorldDestroyed フラグと完了状態を両方立てる。
+        /// World 破棄時に呼ぶ。WorldDestroyed フラグと完了状態を両方立てる。
         /// </summary>
         public void MarkWorldDestroyed()
         {

@@ -28,11 +28,6 @@ namespace ECSave.Internal
 
         public static void ThrowIfNotMainThread()
         {
-            // 初回呼び出し時は「呼び出し元スレッドを main thread として記録」する。
-            // Unity の Awake/Start/Update は main thread で走るため、
-            // SaveSystem の初回呼び出し元は main thread であることが期待される。
-            // ここで自動記録しないと、SaveRuntimeSystem.OnCreate より前に
-            // SaveSystem を呼んだ場合に、main thread から呼んでいても例外が飛ぶ。
             if (!_recorded)
             {
                 RecordMainThreadId();
@@ -46,6 +41,19 @@ namespace ECSave.Internal
                     $"RecordedMainThreadId={_recordedMainThreadId}, " +
                     $"CurrentThreadId={Thread.CurrentThread.ManagedThreadId}.");
             }
+        }
+
+        /// <summary>
+        /// Review #11: Domain Reload 無効時の静的状態リセット。
+        /// セッション間で古い main thread ID が残ると、別スレッド ID の
+        /// 新セッションで ThrowIfNotMainThread が誤検出する。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(
+            RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        private static void ResetOnLoad()
+        {
+            _recordedMainThreadId = 0;
+            _recorded = false;
         }
 
         internal static void ResetForTests()

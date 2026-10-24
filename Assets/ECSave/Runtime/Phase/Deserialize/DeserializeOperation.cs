@@ -13,6 +13,11 @@ using FormatException = ECSave.Format.FormatException;
 
 namespace ECSave.Internal
 {
+    internal sealed class DeserializePhaseException : Exception
+    {
+        public DeserializePhaseException(string message) : base(message) { }
+    }
+
     internal sealed unsafe class DeserializeOperation : IDisposable
     {
         private enum Stage : byte
@@ -152,31 +157,43 @@ namespace ECSave.Internal
             _ctx = PrephaseContext.Create(_def, _world);
             _ctxInitialized = true;
 
+            DeserializeDiag.BeginPhase();
             var err = D0_InputCopyPhase.Execute(ref _ctx, _data, _def, _world, ct);
+            DeserializeDiag.EndPhase("D0_InputCopy");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D1_StructureValidationPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D1_Structure");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
-            err = D2_ChecksumVerificationPhase.Execute(ref _ctx);
-            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
-
+            DeserializeDiag.BeginPhase();
             err = D3_VersionCheckPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D3_Version");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D4_WorldIdCheckPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D4_WorldId");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D5_SchemaMatchPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D5_SchemaMatch");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D6_MigrationPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D6_Migration");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D5_5_PrefabMigrationPhase.Execute(ref _ctx, out var prefabIdentities);
+            DeserializeDiag.EndPhase("D5.5_PrefabMigration");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
             _ctx.PrefabIdentities = prefabIdentities;
 
+            DeserializeDiag.BeginPhase();
             err = D4_5_SubSceneMatchPhase.Execute(
                 _def.SubScene,
                 _ctx.SectionTable,
@@ -184,16 +201,23 @@ namespace ECSave.Internal
                 _ctx.Warnings,
                 out var subSceneState,
                 out _);
+            DeserializeDiag.EndPhase("D4.5_SubSceneMatch");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
             _ctx.SubSceneState = subSceneState;
 
+            DeserializeDiag.BeginPhase();
             err = D7_EntityRefValidationPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D7_EntityRefValidation");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D8_RecordValidationPhase.Execute(ref _ctx);
+            DeserializeDiag.EndPhase("D8_RecordValidation");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = D8_5_TombstoneValidationPhase.Execute(ref _ctx, out var tombstoneEntries);
+            DeserializeDiag.EndPhase("D8.5_TombstoneValidation");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
             _ctx.TombstoneSections = tombstoneEntries;
 
@@ -204,20 +228,26 @@ namespace ECSave.Internal
         {
             var em = _world.EntityManager;
 
-            var err = P1_PlanPhase.Execute(ref _ctx, _policy);
+            DeserializeDiag.BeginPhase();
+            var err = P1_PlanPhase.Execute(ref _ctx, _scope, _policy);
+            DeserializeDiag.EndPhase("P1_Plan");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
+            DeserializeDiag.BeginPhase();
             err = P1_5_SceneRestorePlanPhase.Execute(
                 _def.SubScene,
                 _ctx.SubSceneState,
                 out var restoreRequests);
+            DeserializeDiag.EndPhase("P1.5_SceneRestorePlan");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
             _ctx.SubSceneRestoreRequests = restoreRequests;
 
             _destroyTargets = new NativeList<Entity>(16, Allocator.Persistent);
             _destroyTargetsCreated = true;
 
+            DeserializeDiag.BeginPhase();
             err = P1_DeletionPlanPhase.Execute(ref _ctx, _scope, _policy, _destroyTargets);
+            DeserializeDiag.EndPhase("P1_DeletionPlan");
             if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
 
             if (_policy == DeletionPolicy.ByScope
@@ -246,7 +276,10 @@ namespace ECSave.Internal
                 _updateArray[i] = _updateTargets[i];
 
             _journal = new ApplyJournal(Allocator.Persistent);
+
+            DeserializeDiag.BeginPhase();
             _journal.Backup(_ctx.Definition, _updateArray, em);
+            DeserializeDiag.EndPhase("P2_Backup");
 
             return true;
         }
@@ -254,6 +287,16 @@ namespace ECSave.Internal
         private void DoApply(CancellationToken ct)
         {
             var em = _world.EntityManager;
+
+            DeserializeDiag.BeginPhase();
+            var staleErr = ValidateUpdateTargets(em, _updateTargets);
+            DeserializeDiag.EndPhase("P0_Validate");
+            if (staleErr != SaveLoadErrorCode.None)
+            {
+                _result = LoadResult.Failure(staleErr);
+                return;
+            }
+
             bool success = false;
             IReadOnlyList<SceneLoadInfo> sceneSnapshot = null;
 
@@ -261,9 +304,13 @@ namespace ECSave.Internal
             {
                 try
                 {
-                    if (FaultInjector.ShouldFail("P3"))
-                        throw new InvalidOperationException("Injected P3");
+                    if (ct.IsCancellationRequested)
+                        throw new OperationCanceledException(ct);
 
+                    if (FaultInjector.ShouldFail("P3"))
+                        throw new DeserializePhaseException("Injected P3");
+
+                    DeserializeDiag.BeginPhase();
                     CreateEntitiesForNonChunkSections(ref _ctx, _journal, em);
 
                     for (int i = 0; i < _ctx.SectionTable.Count; i++)
@@ -274,39 +321,55 @@ namespace ECSave.Internal
                         var bodyView = SectionBodyHelper.GetSectionBody(_ctx, i);
                         CreateEntitiesForSection(bodyView, _ctx.PersistentToEntity, _journal, em);
                     }
+                    DeserializeDiag.EndPhase("P3_Generate");
 
                     if (ct.IsCancellationRequested)
-                        throw new InvalidOperationException("Cancelled");
+                        throw new OperationCanceledException(ct);
 
                     if (FaultInjector.ShouldFail("P4"))
-                        throw new InvalidOperationException("Injected P4");
+                        throw new DeserializePhaseException("Injected P4");
 
+                    DeserializeDiag.BeginPhase();
                     var p72 = P7_2_FixedStringScanPhase.Execute(ref _ctx);
+                    DeserializeDiag.EndPhase("P7.2_FixedStringScan");
                     if (p72 != SaveLoadErrorCode.None)
-                        throw new InvalidOperationException("P7.2 failed: " + p72);
+                        throw new DeserializePhaseException("P7.2 failed: " + p72);
 
+                    DeserializeDiag.BeginPhase();
                     ApplyNonChunkModules(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P4_ApplyModules");
+
+                    DeserializeDiag.BeginPhase();
                     ApplyIdentityModules(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P4_ApplyIdentities");
 
-                    if (P4_StructuralChangePhase.Execute(ref _ctx, _policy, em)
-                        != SaveLoadErrorCode.None)
-                        throw new InvalidOperationException("P4 removal failed");
+                    DeserializeDiag.BeginPhase();
+                    var p4 = P4_StructuralChangePhase.Execute(ref _ctx, _policy, em);
+                    DeserializeDiag.EndPhase("P4_StructuralChange");
+                    if (p4 != SaveLoadErrorCode.None)
+                        throw new DeserializePhaseException("P4 removal failed");
 
+                    DeserializeDiag.BeginPhase();
                     ApplyChunkModules(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P6_AddChunkComponents");
 
-                    if (P6_ChunkComponentRestorePhase.Execute(ref _ctx, em)
-                        != SaveLoadErrorCode.None)
-                        throw new InvalidOperationException("P6 failed");
+                    DeserializeDiag.BeginPhase();
+                    var p6 = P6_ChunkComponentRestorePhase.Execute(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P6_RestoreChunks");
+                    if (p6 != SaveLoadErrorCode.None)
+                        throw new DeserializePhaseException("P6 failed");
 
                     if (FaultInjector.ShouldFail("P5"))
-                        throw new InvalidOperationException("Injected P5");
+                        throw new DeserializePhaseException("Injected P5");
 
                     sceneSnapshot = CaptureSceneSnapshot(_def.SubScene);
 
+                    DeserializeDiag.BeginPhase();
                     var p35 = P3_5_SceneRestoreExecutionPhase.Execute(
                         _def.SubScene,
                         _ctx.SubSceneRestoreRequests,
                         ref _ctx.Warnings);
+                    DeserializeDiag.EndPhase("P3.5_SceneRestore");
                     if (p35 != SaveLoadErrorCode.None)
                     {
                         bool entityOk = _journal.Rollback(_updateArray, em);
@@ -324,20 +387,25 @@ namespace ECSave.Internal
                         return;
                     }
 
+                    DeserializeDiag.BeginPhase();
                     var p65 = P6_5_TombstoneApplyPhase.Execute(ref _ctx, em, _destroyTargets);
+                    DeserializeDiag.EndPhase("P6.5_TombstoneApply");
                     if (p65 != SaveLoadErrorCode.None)
-                        throw new InvalidOperationException("P6.5 failed: " + p65);
+                        throw new DeserializePhaseException("P6.5 failed: " + p65);
 
+                    DeserializeDiag.BeginPhase();
                     var p75 = P7_5_PrefabIdentityApplyPhase.Execute(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P7.5_PrefabIdentityApply");
                     if (p75 != SaveLoadErrorCode.None)
-                        throw new InvalidOperationException("P7.5 failed: " + p75);
+                        throw new DeserializePhaseException("P7.5 failed: " + p75);
 
                     if (FaultInjector.ShouldFail("P7"))
-                        throw new InvalidOperationException("Injected P7");
+                        throw new DeserializePhaseException("Injected P7");
 
                     if (_destroyTargets.IsCreated && _destroyTargets.Length > 0)
                     {
-                        var validTargets = new NativeList<Entity>(_destroyTargets.Length, Allocator.Temp);
+                        var validTargets = new NativeList<Entity>(
+                            _destroyTargets.Length, Allocator.Temp);
                         try
                         {
                             for (int i = 0; i < _destroyTargets.Length; i++)
@@ -349,6 +417,7 @@ namespace ECSave.Internal
 
                             if (validTargets.Length > 0)
                             {
+                                DeserializeDiag.BeginPhase();
                                 try
                                 {
                                     em.DestroyEntity(validTargets.AsArray());
@@ -364,6 +433,7 @@ namespace ECSave.Internal
                                         entityCount: _ctx.Header.LogicalEntityCount);
                                     return;
                                 }
+                                DeserializeDiag.EndPhase("P7_Destroy");
                             }
                         }
                         finally
@@ -378,21 +448,33 @@ namespace ECSave.Internal
                 {
                     if (!success)
                     {
+                        DeserializeDiag.BeginPhase();
                         bool entityOk = _journal.Rollback(_updateArray, em);
                         bool sceneOk = TryRollbackSceneState(
                             sceneSnapshot,
                             _ctx.SubSceneRestoreRequests,
                             _def.SubScene,
                             ref _ctx.Warnings);
+                        DeserializeDiag.EndPhase("Rollback");
                         if (!entityOk || !sceneOk)
-                            throw new InvalidOperationException("Rollback failed");
+                            throw new DeserializePhaseException("Rollback failed");
                     }
                 }
 
+                DeserializeDiag.BeginPhase();
                 var warnings = new List<LoadWarning>();
                 _ctx.Warnings.ToLoadWarnings(warnings, BuildTypeNameMap(ref _ctx));
+                DeserializeDiag.EndPhase("P8_Warnings");
 
                 _result = LoadResult.Success(_ctx.Header.LogicalEntityCount, warnings);
+            }
+            catch (DeserializePhaseException)
+            {
+                _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+            }
+            catch (OperationCanceledException)
+            {
+                _result = LoadResult.Failure(SaveLoadErrorCode.Cancelled);
             }
             catch (FormatException fe)
             {
@@ -400,10 +482,25 @@ namespace ECSave.Internal
             }
             catch (Exception ex)
             {
-                if (!(ex is InvalidOperationException))
-                    UnityEngine.Debug.LogError($"[ECSave] DeserializeOperation.DoApply threw: {ex}");
+                UnityEngine.Debug.LogError(
+                    $"[ECSave] DeserializeOperation.DoApply threw: {ex}");
                 _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
             }
+        }
+
+        private static SaveLoadErrorCode ValidateUpdateTargets(
+            EntityManager em, NativeList<Entity> updateTargets)
+        {
+            if (!updateTargets.IsCreated) return SaveLoadErrorCode.None;
+
+            for (int i = 0; i < updateTargets.Length; i++)
+            {
+                var e = updateTargets[i];
+                if (e == Entity.Null) continue;
+                if (!em.Exists(e))
+                    return SaveLoadErrorCode.WorldModificationFailed;
+            }
+            return SaveLoadErrorCode.None;
         }
 
         private static IReadOnlyList<SceneLoadInfo> CaptureSceneSnapshot(SubSceneDefinition def)

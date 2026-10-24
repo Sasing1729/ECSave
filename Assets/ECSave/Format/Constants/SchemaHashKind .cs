@@ -1,5 +1,4 @@
-﻿// Runtime/Format/Constants/SchemaHashKind.cs
-namespace ECSave.Format
+﻿namespace ECSave.Format
 {
     /// <summary>SchemaHash 入力列のエントリ種別（内部設計 5.4）。</summary>
     public enum SchemaHashKind : byte

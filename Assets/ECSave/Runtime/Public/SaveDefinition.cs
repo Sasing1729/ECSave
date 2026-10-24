@@ -17,9 +17,8 @@ namespace ECSave
         public SubSceneDefinition SubScene { get; internal set; }
 
         /// <summary>
-        /// ★ 追加: Deserialize 時に FixedString の切詰め疑いを検出したら
+        /// Deserialize 時に FixedString の切詰め疑いを検出したら
         /// 文字境界まで自動修復するか。デフォルト true。
-        /// 無効化するには SaveDefinitionBuilderImpl.DisableAutoRepairFixedString() を使う。
         /// </summary>
         public bool AutoRepairFixedString { get; internal set; } = true;
 
@@ -63,6 +62,18 @@ namespace ECSave
             GameDataVersion = gameDataVersion;
             WorldId = worldId ?? string.Empty;
             SubScene = SubSceneDefinition.Empty;
+
+            // Review #8a: 直接コンストラクタで生成された場合、RegistrationId が
+            // 全て 0 のままになり、複数モジュールで P4_StructuralChangePhase の
+            // CollectCoveredPids が誤動作する（被覆判定が崩れてコンポーネントを
+            // 誤って外す）。IdentityIndex の typeIndex も全て 0 になり、
+            // 異なる Identity 型の同値キーが衝突する（Review #8b）。
+            //
+            // SaveDefinitionBuilderImpl 経由の場合は既に 0..n-1 が振られているが、
+            // 同じ値になるため上書きは無害。念のため明示的に振り直す。
+            AssignRegistrationIds(Modules, static (m, i) => m.RegistrationId = i);
+            AssignRegistrationIds(Identities, static (m, i) => m.RegistrationId = i);
+            AssignRegistrationIds(Selections, static (m, i) => m.RegistrationId = i);
         }
 
         public IdentityModule FindIdentity(ulong nameHash)
@@ -74,6 +85,18 @@ namespace ECSave
                     return im;
             }
             return null;
+        }
+
+        /// <summary>
+        /// リスト内の全要素に 0..n-1 の RegistrationId を振る。
+        /// 空/null リストは何もしない。
+        /// </summary>
+        private static void AssignRegistrationIds<T>(
+            IReadOnlyList<T> list, Action<T, int> assign)
+        {
+            if (list == null) return;
+            for (int i = 0; i < list.Count; i++)
+                assign(list[i], i);
         }
     }
 }

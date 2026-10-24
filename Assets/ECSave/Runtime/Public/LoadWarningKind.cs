@@ -94,5 +94,17 @@
         /// <see cref="LoadWarning.ExtraHash"/> に削除された Entity 数が入る。
         /// </summary>
         ByScopeDeletionWarning = 10,
+
+        /// <summary>
+        /// Review #13b: Prefab のスキーマハッシュが変化しているが、
+        /// <see cref="SubSceneDefinition.PrefabMigrations"/> に該当する
+        /// マイグレーションチェーンが見つからない。
+        ///
+        /// <para>
+        /// 対象 Entity は元の Prefab 構成のまま残る。
+        /// <see cref="LoadWarning.SaveEntityIndex"/> に対象の永続 ID が入る。
+        /// </para>
+        /// </summary>
+        PrefabSchemaMigrationFailed = 11,
     }
 }

@@ -24,7 +24,11 @@ namespace ECSave.Tests.Generator
         public FixedString32Bytes Label;
     }
 
+    /// <summary>
+    /// Unity.Collections.FixedList の内部実装を反射で調査する診断用プローブ。CI からは除外する。
+    /// </summary>
     [TestFixture]
+    [Category("Verification")]
     public sealed class FixedListPaddingProbe
     {
         [Test]

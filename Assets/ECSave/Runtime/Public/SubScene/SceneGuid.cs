@@ -1,4 +1,6 @@
 ﻿using System;
+using ECSave.Format;
+using FormatException = System.FormatException;
 
 namespace ECSave
 {
@@ -21,11 +23,23 @@ namespace ECSave
             return new SceneGuid(ParseHex64(hex32, 0), ParseHex64(hex32, 16));
         }
 
+        /// <summary>
+        /// 文字列から決定的に SceneGuid を導出する。
+        ///
+        /// <para>
+        /// 旧実装は <c>FnvUtf8</c> を内部に持っていたが、
+        /// <see cref="SchemaHashCore.HashUtf8"/> と完全に同一仕様であるべきにも関わらず、
+        /// サロゲートペアの扱いに差があった（3 byte で誤エンコード）。
+        /// </para>
+        /// <para>
+        /// 共通実装に委譲する。入力に非 BMP 文字を含まない限り、ハッシュ値は旧実装と一致する。
+        /// </para>
+        /// </summary>
         public static SceneGuid FromString(string s)
         {
             if (string.IsNullOrEmpty(s)) return default;
-            ulong hi = FnvUtf8(s, 0xcbf29ce484222325UL);
-            ulong lo = FnvUtf8(s, hi);
+            ulong hi = SchemaHashCore.HashUtf8(s);
+            ulong lo = SchemaHashCore.HashUtf8(s, hi);
             return new SceneGuid(hi, lo);
         }
 
@@ -52,29 +66,6 @@ namespace ECSave
                 v = (v << 4) | digit;
             }
             return v;
-        }
-
-        private static ulong FnvUtf8(string s, ulong seed)
-        {
-            const ulong Prime = 0x100000001b3UL;
-            ulong h = seed;
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                if (c < 0x80) { h ^= (byte)c; h *= Prime; }
-                else if (c < 0x800)
-                {
-                    h ^= (byte)(0xC0 | (c >> 6)); h *= Prime;
-                    h ^= (byte)(0x80 | (c & 0x3F)); h *= Prime;
-                }
-                else
-                {
-                    h ^= (byte)(0xE0 | (c >> 12)); h *= Prime;
-                    h ^= (byte)(0x80 | ((c >> 6) & 0x3F)); h *= Prime;
-                    h ^= (byte)(0x80 | (c & 0x3F)); h *= Prime;
-                }
-            }
-            return h;
         }
     }
 }

@@ -21,12 +21,13 @@ namespace Game.MinimalE2E
         public override string[] FieldNames => s_fieldNames;
 
         public override EntityQuery BuildQuery(EntityManager em)
-            => em.CreateEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<Stunned>() },
-                // A-06：IgnoreComponentEnabledState を指定。無効 Entity も対象。
-                Options = EntityQueryOptions.IgnoreComponentEnabledState,
-            });
+            => ModuleQueryCache.GetOrCreate(em, this, () =>
+                em.CreateEntityQuery(new EntityQueryDesc
+                {
+                    All = new[] { ComponentType.ReadOnly<Stunned>() },
+                    Options = EntityQueryOptions.IgnoreComponentEnabledState
+                            | EntityQueryOptions.IncludeDisabledEntities,
+                }));
 
         protected override unsafe void WriteValue(Entity entity, EntityManager em, byte* value)
         {

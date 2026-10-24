@@ -61,5 +61,28 @@ namespace ECSave.Internal.Contract
                     s_subSceneBinders[kv.Key] = sub;
             }
         }
+
+        /// <summary>
+        /// Domain Reload 無効時の静的状態リセット。
+        ///
+        /// <para>
+        /// <b>ロード順序の注意</b>: Source Generator が生成する <c>Register()</c> は
+        /// <see cref="UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration"/> で
+        /// 実行される。本リセットも <c>SubsystemRegistration</c> に置くことで、
+        /// 「リセット → 直後に Register」という順序を保つ。
+        /// </para>
+        /// <para>
+        /// <b>過去の誤り</b>: <c>AfterAssembliesLoaded</c> に置いていた時期があり、
+        /// これは <c>SubsystemRegistration</c> の後に実行されるため、
+        /// Register で登録された binder を直後に消してしまうバグになっていた。
+        /// </para>
+        /// </summary>
+        [UnityEngine.RuntimeInitializeOnLoadMethod(
+            UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOnLoad()
+        {
+            s_binders.Clear();
+            s_subSceneBinders.Clear();
+        }
     }
 }

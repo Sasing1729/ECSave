@@ -97,8 +97,21 @@ namespace ECSave
         public void RegisterPrefabMigrationStep(PrefabMigrationStepBase step)
         {
             if (step == null) throw new ArgumentNullException(nameof(step));
+            // Review #13a: 同一 OldPrefabSchemaHash の重複登録をビルド時に検出する。
+            // 旧実装は PrefabMigrationTable.From で throw しており、
+            // 毎回のロード時（D5_5）にしか検出できなかった。
             for (int i = 0; i < _prefabMigrations.Count; i++)
-                if (_prefabMigrations[i].GetType() == step.GetType()) return;
+            {
+                var existing = _prefabMigrations[i];
+                if (existing.GetType() == step.GetType()) return;
+                if (existing.OldPrefabSchemaHash == step.OldPrefabSchemaHash)
+                {
+                    throw new SaveRegistrationException(
+                        "ECSAVE-R030",
+                        $"Prefab migration already registered for OldPrefabSchemaHash=0x{step.OldPrefabSchemaHash:X16}: " +
+                        $"{existing.GetType().FullName} vs {step.GetType().FullName}");
+                }
+            }
             _prefabMigrations.Add(step);
         }
 
@@ -132,6 +145,14 @@ namespace ECSave
                 UnityEngine.Debug.LogWarning(
                     "[ECSave] ContentVerificationMode.GuidAndContentHash requires SceneStateProvider " +
                     "that returns SceneLoadInfo.ContentHash. Verification will be skipped.");
+            }
+
+            // Review #13c: Migration を登録しても Provider が無いと機能しない（サイレント失敗）。
+            if (_prefabMigrations.Count > 0 && _prefabIdentityProvider == null)
+            {
+                UnityEngine.Debug.LogWarning(
+                    "[ECSave] Prefab migrations are registered but no PrefabIdentityProvider is set. " +
+                    "Migrations will never run. Call WithPrefabIdentityProvider(...) to enable prefab migration.");
             }
 
             IReadOnlyList<SubSceneDestroyedIdentityHandler> handlers =

@@ -89,8 +89,24 @@ namespace ECSave.Internal.SubScene
             || DestroyedHandlers.Count > 0
             || PrefabMigrations.Count > 0;
 
+        /// <summary>
+        /// Tombstone 機能が有効かどうか。
+        ///
+        /// <para>
+        /// Review #5c: 旧実装は <c>DestroyedHandlers.Count > 0</c> を要求していたが、
+        /// これは <see cref="SubSceneDefinitionBuilderImpl.Build"/> 時点のスナップショット
+        /// であり、<c>GetSaveSystem()</c> 後に <c>SubSceneTombstone.MarkDestroyed&lt;T&gt;()</c>
+        /// が呼ばれると空のままになる。
+        /// </para>
+        /// <para>
+        /// 実際にどのハンドラをキャプチャするかは
+        /// <c>S2_6_TombstoneCapturePhase.Execute</c> 実行時に解決する
+        /// （<c>def.DestroyedHandlers</c> が空なら <c>SubSceneTombstone.GetRegisteredHandlers()</c>
+        /// にフォールバック）。
+        /// </para>
+        /// </summary>
         public bool HasTombstones
-            => RegisterDestroyedEntities && DestroyedHandlers.Count > 0;
+            => RegisterDestroyedEntities;
 
         public bool HasPrefabIdentity
             => PrefabIdentityProvider != null;

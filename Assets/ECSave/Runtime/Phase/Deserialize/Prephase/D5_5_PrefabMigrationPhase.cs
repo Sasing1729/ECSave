@@ -82,7 +82,7 @@ namespace ECSave.Phase.Deserialize.Prephase
                 if (chain == null || chain.Length == 0)
                 {
                     ctx.Warnings.Add(WarningRecord.Create(
-                        LoadWarningKind.SceneContentHashMismatch,
+                        LoadWarningKind.PrefabSchemaMigrationFailed,
                         typeSectionId: 0,
                         saveEntityIndex: (int)pid,
                         sourceEntity: Entity.Null));

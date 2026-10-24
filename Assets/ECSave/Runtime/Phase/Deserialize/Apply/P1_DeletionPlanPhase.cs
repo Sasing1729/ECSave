@@ -1,4 +1,5 @@
 ﻿using ECSave.Format;
+using ECSave.Internal.SubScene;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -50,6 +51,11 @@ namespace ECSave.Internal
                     {
                         var e = all[i];
                         if (em.HasComponent<Prefab>(e)) continue;
+
+                        // Review #5b: Tombstone Registry singleton は削除対象から除外する。
+                        // P6.5 で復元した Registry が P7 で破棄されると Tombstone が消える。
+                        if (em.HasComponent<SubSceneTombstoneRegistryTag>(e)) continue;
+
                         if (updateTargets.Contains(e)) continue;
                         if (policy == DeletionPolicy.ByRegistration
                             && !registeredSet.Contains(e)) continue;
@@ -63,6 +69,9 @@ namespace ECSave.Internal
                     for (int i = 0; i < regionEntities.Length; i++)
                     {
                         var e = regionEntities[i];
+                        if (em.HasComponent<Prefab>(e)) continue;
+                        if (em.HasComponent<SubSceneTombstoneRegistryTag>(e)) continue;
+
                         if (updateTargets.Contains(e)) continue;
                         if (policy == DeletionPolicy.ByRegistration
                             && !registeredSet.Contains(e)) continue;

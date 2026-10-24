@@ -5,10 +5,6 @@ using Unity.Entities;
 
 namespace ECSave.Internal
 {
-    /// <summary>
-    /// ScheduleCountJob / ScheduleCopyJob に渡す実行コンテキスト。
-    /// 型固有の BufferTypeHandle は仮想メソッドの引数で別途渡す。
-    /// </summary>
     public struct BufferAsyncContext
     {
         public EntityQuery Query;
@@ -21,8 +17,6 @@ namespace ECSave.Internal
         public int Stride;
     }
 
-    // ジェネリックフォールバック（Burst 非対応、managed 実行）。
-    // SourceGenerator が具象ジョブを生成しない場合に使われる。
     internal unsafe struct BufferCountJob<T> : IJobChunk
         where T : unmanaged, IBufferElementData
     {
@@ -52,6 +46,7 @@ namespace ECSave.Internal
     {
         [ReadOnly] public BufferTypeHandle<T> BufferHandle;
         [ReadOnly] public NativeArray<int> ChunkStartIndices;
+        [ReadOnly] public NativeArray<int> ElementCounts;
         [ReadOnly] public NativeArray<int> ByteOffsets;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Output;
         public int Stride;
@@ -67,6 +62,15 @@ namespace ECSave.Internal
             {
                 var buf = buffers[i];
                 int len = buf.Length;
+
+                // Review #4a: Count パス(N) と Copy パス(N+1) の間に
+                // フレーム跨ぎでバッファが伸びた場合、ByteOffsets は
+                // 確定済みの ElementCounts に基づく。len > ElementCounts だと
+                // 次のエンティティの領域に書き込む（バッファオーバーフロー）。
+                // クランプにより、確定済みの領域にのみ書く。
+                int maxLen = ElementCounts[start + i];
+                if (len > maxLen) len = maxLen;
+
                 if (len == 0) continue;
 
                 byte* src = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(

@@ -119,7 +119,6 @@ namespace ECSave.Tests.Runtime.SubScene
                 new SaveDefinition(Array.Empty<SaveTypeModule>(), 1, "W"), null);
             try
             {
-                // def は default (PrefabIdentityProvider == null)
                 var err = D5_5_PrefabMigrationPhase.Execute(ref ctx, out var parsed);
                 Assert.That(err, Is.EqualTo(SaveLoadErrorCode.None));
                 Assert.That(parsed.HasValue, Is.False);
@@ -204,7 +203,6 @@ namespace ECSave.Tests.Runtime.SubScene
             ctx.Definition.SubScene = MakeDef(_ => new PrefabIdentityInfo(1, 2));
             try
             {
-                // 3 records = 8 + 72 = 80 bytes; declare only 32
                 entries[0] = new SectionEntry
                 {
                     Kind = SectionKind.PrefabIdentity,
@@ -232,7 +230,6 @@ namespace ECSave.Tests.Runtime.SubScene
             ctx.Definition.SubScene = MakeDef(_ => new PrefabIdentityInfo(1, 2));
             try
             {
-                // PrefabSchemaRegistry に登録しない
                 var err = D5_5_PrefabMigrationPhase.Execute(ref ctx, out var parsed);
                 Assert.That(err, Is.EqualTo(SaveLoadErrorCode.None));
                 Assert.That(parsed.HasValue, Is.True);
@@ -289,8 +286,9 @@ namespace ECSave.Tests.Runtime.SubScene
         }
 
         // === #10: chain 解決失敗 ===
+        // Review #13b: 専用 WarningKind (PrefabSchemaMigrationFailed) を検証
         [Test]
-        public void HashMismatchNoChain_EmitsSceneContentHashMismatch()
+        public void HashMismatchNoChain_EmitsPrefabSchemaMigrationFailed()
         {
             var (ctx, buffer, entries) = MakeContextWithSection(default,
                 new PrefabIdentityRecord(1, 0xAAAA, 0xBBBB));
@@ -298,13 +296,15 @@ namespace ECSave.Tests.Runtime.SubScene
             try
             {
                 PrefabSchemaRegistry.Register(0xAAAA, 0xCCCC);
-                // No migration steps registered
 
                 var err = D5_5_PrefabMigrationPhase.Execute(ref ctx, out _);
                 Assert.That(err, Is.EqualTo(SaveLoadErrorCode.None));
                 Assert.That(ctx.PrefabMigrationsToApply, Is.Null);
-                Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.SceneContentHashMismatch), Is.True);
+                Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.PrefabSchemaMigrationFailed), Is.True,
+                    "Chain failure must emit PrefabSchemaMigrationFailed (Review #13b)");
                 Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.PrefabMigrated), Is.False);
+                Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.SceneContentHashMismatch), Is.False,
+                    "Prefab chain failure must not reuse SceneContentHashMismatch (Review #13b)");
             }
             finally { ctx.Dispose(); buffer.Dispose(); entries.Dispose(); }
         }
@@ -330,6 +330,7 @@ namespace ECSave.Tests.Runtime.SubScene
                 Assert.That(ctx.PrefabMigrationsToApply[0].Steps.Length, Is.EqualTo(1));
                 Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.PrefabMigrated), Is.True);
                 Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.SceneContentHashMismatch), Is.False);
+                Assert.That(HasWarning(ctx.Warnings, LoadWarningKind.PrefabSchemaMigrationFailed), Is.False);
             }
             finally { ctx.Dispose(); buffer.Dispose(); entries.Dispose(); }
         }
@@ -358,6 +359,7 @@ namespace ECSave.Tests.Runtime.SubScene
         }
 
         // === 混合: 一致 / 不一致+chain / 不一致-chain ===
+        // Review #13b: chain 失敗は PrefabSchemaMigrationFailed、chain 成功は PrefabMigrated
         [Test]
         public void MixedEntities_EachHandledIndependently()
         {
@@ -379,7 +381,10 @@ namespace ECSave.Tests.Runtime.SubScene
                 Assert.That(ctx.PrefabMigrationsToApply.Count, Is.EqualTo(1));
                 Assert.That(ctx.PrefabMigrationsToApply[0].PersistentId, Is.EqualTo(2u));
                 Assert.That(CountWarnings(ctx.Warnings, LoadWarningKind.PrefabMigrated), Is.EqualTo(1));
-                Assert.That(CountWarnings(ctx.Warnings, LoadWarningKind.SceneContentHashMismatch), Is.EqualTo(1));
+                Assert.That(CountWarnings(ctx.Warnings, LoadWarningKind.PrefabSchemaMigrationFailed), Is.EqualTo(1),
+                    "Chain failure (entity 3) must emit PrefabSchemaMigrationFailed (Review #13b)");
+                Assert.That(CountWarnings(ctx.Warnings, LoadWarningKind.SceneContentHashMismatch), Is.EqualTo(0),
+                    "Prefab chain failure must not reuse SceneContentHashMismatch");
             }
             finally { ctx.Dispose(); buffer.Dispose(); entries.Dispose(); }
         }

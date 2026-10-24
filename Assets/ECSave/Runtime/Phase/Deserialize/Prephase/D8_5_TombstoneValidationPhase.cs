@@ -63,27 +63,53 @@ namespace ECSave.Phase.Deserialize.Prephase
                 if (view.KeyStride != handler.KeyStride)
                     return SaveLoadErrorCode.ValidationFailed;
 
+                // Review #5a: O(n²) 比較を HashSet<byte[]> でハッシュ化。
+                // Tombstone 件数は数百程度なので、マネージド HashSet で十分。
+                var seen = new HashSet<byte[]>(ByteArrayComparer.Instance);
                 int n = (int)view.Count;
                 int stride = view.KeyStride;
+
                 for (int a = 0; a < n; a++)
                 {
+                    var key = new byte[stride];
                     byte* pa = view.Keys + a * stride;
-                    for (int b = a + 1; b < n; b++)
-                    {
-                        byte* pb = view.Keys + b * stride;
-                        bool eq = true;
-                        for (int k = 0; k < stride; k++)
-                        {
-                            if (pa[k] != pb[k]) { eq = false; break; }
-                        }
-                        if (eq) return SaveLoadErrorCode.ValidationFailed;
-                    }
+                    for (int b = 0; b < stride; b++) key[b] = pa[b];
+
+                    if (!seen.Add(key))
+                        return SaveLoadErrorCode.ValidationFailed;
                 }
 
                 result.Add(new TombstoneEntry { Handler = handler, View = view });
             }
 
             return SaveLoadErrorCode.None;
+        }
+
+        private sealed class ByteArrayComparer : IEqualityComparer<byte[]>
+        {
+            public static readonly ByteArrayComparer Instance = new ByteArrayComparer();
+
+            public bool Equals(byte[] x, byte[] y)
+            {
+                if (ReferenceEquals(x, y)) return true;
+                if (x == null || y == null) return false;
+                if (x.Length != y.Length) return false;
+                for (int i = 0; i < x.Length; i++)
+                    if (x[i] != y[i]) return false;
+                return true;
+            }
+
+            public int GetHashCode(byte[] obj)
+            {
+                if (obj == null) return 0;
+                ulong h = 0xcbf29ce484222325UL;
+                for (int i = 0; i < obj.Length; i++)
+                {
+                    h ^= obj[i];
+                    h *= 0x100000001b3UL;
+                }
+                return (int)(h ^ (h >> 32));
+            }
         }
     }
 }

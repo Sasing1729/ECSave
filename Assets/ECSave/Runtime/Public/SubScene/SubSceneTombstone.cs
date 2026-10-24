@@ -30,6 +30,34 @@ namespace ECSave
             int stride = UnsafeUtility.SizeOf<TIdentity>();
             ulong typeHash = SubSceneTombstoneRegistry.ComputeTypeHash(typeof(TIdentity).FullName);
 
+            unsafe
+            {
+                byte* basePtr = (byte*)buf.GetUnsafePtr();
+                int total = buf.Length;
+                int pos = 0;
+                fixed (TIdentity* newKeyPtr = &id)
+                {
+                    while (pos + 12 <= total)
+                    {
+                        ulong h = *(ulong*)(basePtr + pos);
+                        int len = *(int*)(basePtr + pos + 8);
+                        if (len < 0 || pos + 12 + len > total) break;
+
+                        if (h == typeHash && len == stride)
+                        {
+                            byte* existing = basePtr + pos + 12;
+                            bool eq = true;
+                            for (int b = 0; b < stride; b++)
+                            {
+                                if (existing[b] != ((byte*)newKeyPtr)[b]) { eq = false; break; }
+                            }
+                            if (eq) return;
+                        }
+                        pos += 12 + len;
+                    }
+                }
+            }
+
             int oldLen = buf.Length;
             buf.ResizeUninitialized(oldLen + 12 + stride);
 
@@ -44,7 +72,6 @@ namespace ECSave
             }
         }
 
-        /// <summary>Registry の全 Buffer をクリアする（テスト・リセット用）。</summary>
         public static void ClearBuffer(World world)
         {
             if (world == null || !world.IsCreated) return;
@@ -53,7 +80,6 @@ namespace ECSave
             SubSceneTombstoneRegistry.ClearBuffer(world.EntityManager, singleton);
         }
 
-        /// <summary>Registry の singleton Entity ごと破棄する。</summary>
         public static void Clear(World world)
         {
             if (world == null || !world.IsCreated) return;
@@ -68,6 +94,18 @@ namespace ECSave
         }
 
         internal static void ClearForTests()
+        {
+            s_handlers.Clear();
+        }
+
+        /// <summary>
+        /// Review #11: Domain Reload 無効時の静的状態リセット。
+        /// セッション間でハンドラ辞書が残ると、Register が早期 return して
+        /// 新しいハンドラが登録されない（ホットリロード時に型 ID が変わる場合の罠）。
+        /// </summary>
+        [UnityEngine.RuntimeInitializeOnLoadMethod(
+            UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        private static void ResetOnLoad()
         {
             s_handlers.Clear();
         }

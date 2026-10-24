@@ -84,6 +84,23 @@ namespace ECSave.Format
             if (tableStart < 0 || tableEnd > _view.Length)
                 throw new FormatException(FormatError.CorruptedData, "section table out of range");
 
+            // Review #12a: SectionTableOffset は 8-byte アライン必須。
+            // (SectionEntry*) の未整列読み取りは ARM で危険。
+            if ((_header.SectionTableOffset & 7UL) != 0)
+                throw new FormatException(FormatError.CorruptedData,
+                    $"SectionTableOffset must be 8-aligned: {_header.SectionTableOffset}");
+
+            long nameHeapStart = tableEnd;
+            if (nameHeapStart < 0 || nameHeapStart > _view.Length)
+                throw new FormatException(FormatError.CorruptedData, "name heap out of range");
+
+            // Review #12b: セクション領域の最小開始位置（header + table + nameHeap）。
+            long nameHeapEnd = nameHeapStart + (long)_header.NameHeapLength;
+            long minSectionStart = (nameHeapEnd + 7L) & ~7L;
+
+            // Review #12b: セクション領域の最大終端（footer 直前）。
+            long maxSectionEnd = (long)_header.TotalLength - ECSaveFormatConstants.FooterSize;
+
             var entries = (SectionEntry*)(_view.Pointer + tableStart);
 
             for (int i = 0; i < count; i++)
@@ -96,13 +113,24 @@ namespace ECSave.Format
                 if (e.Offset + e.Length > _header.TotalLength || e.Offset + e.Length < e.Offset)
                     throw new FormatException(FormatError.CorruptedData, $"section entry {i} range out of file");
 
-                // Kind の値域検査は行わない（内部設計 6.3「未知の Kind は Length で読み飛ばす」）。
-                // 登録種別との不一致検出は D5_SchemaMatchPhase が担う。
-            }
+                // Review #12a: 8-byte アライン
+                if ((e.Offset & 7UL) != 0)
+                    throw new FormatException(FormatError.CorruptedData,
+                        $"section entry {i} Offset must be 8-aligned: {e.Offset}");
 
-            long nameHeapStart = tableEnd;
-            if (nameHeapStart < 0 || nameHeapStart > _view.Length)
-                throw new FormatException(FormatError.CorruptedData, "name heap out of range");
+                // Review #12b: header/table/nameHeap との重なり
+                if ((long)e.Offset < minSectionStart)
+                    throw new FormatException(FormatError.CorruptedData,
+                        $"section entry {i} overlaps header/table/nameHeap: offset={e.Offset}, min={minSectionStart}");
+
+                // Review #12b: footer との重なり
+                long sectionEnd = (long)e.Offset + (long)e.Length;
+                if (sectionEnd > maxSectionEnd)
+                    throw new FormatException(FormatError.CorruptedData,
+                        $"section entry {i} overlaps footer: end={sectionEnd}, max={maxSectionEnd}");
+
+                // Kind の値域検査は行わない（設計 6.3）。
+            }
 
             return new SectionTable
             {
@@ -123,9 +151,6 @@ namespace ECSave.Format
             if (!e.HasTypeDescriptor)
                 throw new FormatException(FormatError.CorruptedData, $"section {sectionIndex} has no type descriptor");
 
-            // ReadSectionTable で e.Offset + e.Length <= TotalLength を検証済み。
-            // TotalLength は ulong だが _view.Length(int) と一致することが ReadHeader で保証される。
-            // それでも int キャストの安全性を明示するため、防衛的に再チェックする。
             if (e.Offset > int.MaxValue)
                 throw new FormatException(FormatError.CorruptedData,
                     $"section {sectionIndex} Offset exceeds int.MaxValue: {e.Offset}");

@@ -23,11 +23,13 @@ namespace Game.MinimalE2E
         public override string[] FieldNames => s_fieldNames;
 
         public override EntityQuery BuildQuery(EntityManager em)
-            => em.CreateEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<EnemyId>() },
-                Options = EntityQueryOptions.IgnoreComponentEnabledState,
-            });
+            => ModuleQueryCache.GetOrCreate(em, this, () =>
+                em.CreateEntityQuery(new EntityQueryDesc
+                {
+                    All = new[] { ComponentType.ReadOnly<EnemyId>() },
+                    Options = EntityQueryOptions.IgnoreComponentEnabledState
+                            | EntityQueryOptions.IncludeDisabledEntities,
+                }));
 
         public override int ComputeBodySize(
             EntityManager em,
@@ -91,20 +93,26 @@ namespace Game.MinimalE2E
             EntityManager em,
             EntityQuery query,
             ref IdentityIndex index,
-            uint typeIndex)
+            uint typeIndex,
+            NativeParallelHashSet<Entity> scopeFilter)
         {
             using var entities = query.ToEntityArray(Allocator.TempJob);
             using var values = query.ToComponentDataArray<EnemyId>(Allocator.TempJob);
+
+            bool hasFilter = scopeFilter.IsCreated;
 
             unsafe
             {
                 byte* src = (byte*)values.GetUnsafeReadOnlyPtr();
                 for (int i = 0; i < entities.Length; i++)
                 {
+                    var entity = entities[i];
+                    if (hasFilter && !scopeFilter.Contains(entity)) continue;
+
                     byte* key = src + i * KeyStride;
                     if (index.HasWorldConflict(typeIndex, key, KeyStride))
                         return SaveLoadErrorCode.ValidationFailed;
-                    index.AddWorldEntry(typeIndex, key, KeyStride, entities[i]);
+                    index.AddWorldEntry(typeIndex, key, KeyStride, entity);
                 }
             }
             return SaveLoadErrorCode.None;

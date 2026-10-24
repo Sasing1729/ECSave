@@ -71,7 +71,14 @@ namespace ECSave.Internal
                 ref var e = ref ctx.SectionTable.Entries[i];
                 oldOff[i] = (int)e.Offset;
                 oldLen[i] = (int)e.Length;
-                tdSizes[i] = (int)(*(uint*)(ctx.View.Pointer + oldOff[i]));
+                // 型記述子を持つセクションのみ blockLen を読む。
+                // SubSceneState / Tombstone / PrefabIdentity は Flags=0 で
+                // 先頭 4 byte は Count であり、blockLen ではない。
+                tdSizes[i] = e.HasTypeDescriptor
+                    ? (int)(*(uint*)(ctx.View.Pointer + oldOff[i]))
+                    : 0;
+                if (tdSizes[i] < 0 || tdSizes[i] > oldLen[i])
+                    return SaveLoadErrorCode.CorruptedData;
 
                 if (stepChains[i] == null)
                     newBodySize[i] = oldLen[i] - tdSizes[i];
@@ -108,9 +115,19 @@ namespace ECSave.Internal
             byte* p = (byte*)newData.GetUnsafePtr();
             byte* old = ctx.View.Pointer;
 
+            // NameHeap の旧ファイル上の位置は、旧ファイルのセクション表直後。
+            // HeaderSize は WorldId 直後の位置であり、表/パディングを含まないため
+            // コピー元として不正（Review #2b）。
+            long oldTableEnd = (long)ctx.Header.SectionTableOffset
+                             + (long)n * ECSaveFormatConstants.SectionEntrySize;
+            if (oldTableEnd < 0 || oldTableEnd + nameHeapLen > ctx.View.Length)
+                return SaveLoadErrorCode.CorruptedData;
+
             UnsafeUtility.MemCpy(p, old, headerSize);
-            *(ulong*)(p + 0x20) = (ulong)totalSize;
-            UnsafeUtility.MemCpy(p + nameHeapOffset, old + ctx.Header.HeaderSize, nameHeapLen);
+            *(ulong*)(p + 0x18) = (ulong)tableOffset;   // SectionTableOffset (Review #2c)
+            *(ulong*)(p + 0x20) = (ulong)totalSize;     // TotalLength
+            if (nameHeapLen > 0)
+                UnsafeUtility.MemCpy(p + nameHeapOffset, old + oldTableEnd, nameHeapLen);
 
             for (int i = 0; i < n; i++)
             {
