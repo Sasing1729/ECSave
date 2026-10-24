@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using ECSave.Internal;
+using Unity.Entities;
 
 namespace ECSave.Internal.SubScene
 {
@@ -15,6 +16,7 @@ namespace ECSave.Internal.SubScene
         public int TombstoneCapacity { get; }
         public Func<IReadOnlyList<SceneLoadInfo>> SceneStateProvider { get; }
         public Func<SceneLoadRequest[], SceneLoadOutcome[]> SceneRestoreCallback { get; }
+        public Func<Entity, PrefabIdentityInfo?> PrefabIdentityProvider { get; }
         internal IReadOnlyList<SubSceneDestroyedIdentityHandler> DestroyedHandlers { get; }
         public IReadOnlyList<PrefabMigrationStepBase> PrefabMigrations { get; }
 
@@ -22,11 +24,10 @@ namespace ECSave.Internal.SubScene
             false, false, false, false,
             ContentVerificationMode.None,
             StreamingConsistencyMode.TimeBased,
-            0, null, null,
+            0, null, null, null,
             Array.Empty<SubSceneDestroyedIdentityHandler>(),
             Array.Empty<PrefabMigrationStepBase>());
 
-        // 後方互換用（旧 10 引数）。destroyedHandlers を空として新コンストラクタへ委譲する。
         public SubSceneDefinition(
             bool registerSceneLoadState,
             bool registerDestroyedEntities,
@@ -38,22 +39,16 @@ namespace ECSave.Internal.SubScene
             Func<IReadOnlyList<SceneLoadInfo>> sceneStateProvider,
             Func<SceneLoadRequest[], SceneLoadOutcome[]> sceneRestoreCallback,
             IReadOnlyList<PrefabMigrationStepBase> prefabMigrations)
-            : this(
-                registerSceneLoadState,
-                registerDestroyedEntities,
-                hasSceneRestoreCallback,
-                withSceneStateRollback,
-                contentVerification,
-                streamingConsistency,
-                tombstoneCapacity,
-                sceneStateProvider,
-                sceneRestoreCallback,
-                Array.Empty<SubSceneDestroyedIdentityHandler>(),
-                prefabMigrations)
+            : this(registerSceneLoadState, registerDestroyedEntities,
+                   hasSceneRestoreCallback, withSceneStateRollback,
+                   contentVerification, streamingConsistency,
+                   tombstoneCapacity, sceneStateProvider, sceneRestoreCallback,
+                   null,
+                   Array.Empty<SubSceneDestroyedIdentityHandler>(),
+                   prefabMigrations)
         {
         }
 
-        // 完全版（S1b 内部使用）
         internal SubSceneDefinition(
             bool registerSceneLoadState,
             bool registerDestroyedEntities,
@@ -64,6 +59,7 @@ namespace ECSave.Internal.SubScene
             int tombstoneCapacity,
             Func<IReadOnlyList<SceneLoadInfo>> sceneStateProvider,
             Func<SceneLoadRequest[], SceneLoadOutcome[]> sceneRestoreCallback,
+            Func<Entity, PrefabIdentityInfo?> prefabIdentityProvider,
             IReadOnlyList<SubSceneDestroyedIdentityHandler> destroyedHandlers,
             IReadOnlyList<PrefabMigrationStepBase> prefabMigrations)
         {
@@ -76,6 +72,7 @@ namespace ECSave.Internal.SubScene
             TombstoneCapacity = tombstoneCapacity;
             SceneStateProvider = sceneStateProvider;
             SceneRestoreCallback = sceneRestoreCallback;
+            PrefabIdentityProvider = prefabIdentityProvider;
             DestroyedHandlers = destroyedHandlers ?? Array.Empty<SubSceneDestroyedIdentityHandler>();
             PrefabMigrations = prefabMigrations ?? Array.Empty<PrefabMigrationStepBase>();
         }
@@ -88,10 +85,14 @@ namespace ECSave.Internal.SubScene
             || ContentVerification != ContentVerificationMode.None
             || StreamingConsistency != StreamingConsistencyMode.TimeBased
             || TombstoneCapacity > 0
+            || PrefabIdentityProvider != null
             || DestroyedHandlers.Count > 0
             || PrefabMigrations.Count > 0;
 
         public bool HasTombstones
             => RegisterDestroyedEntities && DestroyedHandlers.Count > 0;
+
+        public bool HasPrefabIdentity
+            => PrefabIdentityProvider != null;
     }
 }

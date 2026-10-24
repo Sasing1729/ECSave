@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using ECSave.Internal;
 using ECSave.Internal.SubScene;
+using Unity.Entities;
 
 namespace ECSave
 {
@@ -19,19 +20,11 @@ namespace ECSave
         private bool _tombstoneCapacitySet;
         private Func<IReadOnlyList<SceneLoadInfo>> _sceneStateProvider;
         private Func<SceneLoadRequest[], SceneLoadOutcome[]> _sceneRestoreCallback;
+        private Func<Entity, PrefabIdentityInfo?> _prefabIdentityProvider;
         private readonly List<PrefabMigrationStepBase> _prefabMigrations = new();
 
-        public ISubSceneDefinitionBuilder RegisterSceneLoadState()
-        {
-            _registerSceneLoadState = true;
-            return this;
-        }
-
-        public ISubSceneDefinitionBuilder RegisterDestroyedEntities()
-        {
-            _registerDestroyedEntities = true;
-            return this;
-        }
+        public ISubSceneDefinitionBuilder RegisterSceneLoadState() { _registerSceneLoadState = true; return this; }
+        public ISubSceneDefinitionBuilder RegisterDestroyedEntities() { _registerDestroyedEntities = true; return this; }
 
         public ISubSceneDefinitionBuilder WithTombstoneCapacity(int capacity)
         {
@@ -72,17 +65,10 @@ namespace ECSave
             return this;
         }
 
-        public ISubSceneDefinitionBuilder WithSceneStateRollback()
-        {
-            _withSceneStateRollback = true;
-            return this;
-        }
+        public ISubSceneDefinitionBuilder WithSceneStateRollback() { _withSceneStateRollback = true; return this; }
 
         public ISubSceneDefinitionBuilder RegisterPrefabMigration<TPrefabMigration>()
-            where TPrefabMigration : class, IPrefabMigration
-        {
-            return this;
-        }
+            where TPrefabMigration : class, IPrefabMigration => this;
 
         public ISubSceneDefinitionBuilder WithSceneStateProvider(Func<IReadOnlyList<SceneLoadInfo>> provider)
         {
@@ -97,10 +83,16 @@ namespace ECSave
             return this;
         }
 
-        public void MarkSceneRestoreCallbackDeclared()
+        // === S2b-1 追加 ===
+        public ISubSceneDefinitionBuilder WithPrefabIdentityProvider(
+            Func<Entity, PrefabIdentityInfo?> provider)
         {
-            _hasSceneRestoreCallback = true;
+            _prefabIdentityProvider = provider;
+            return this;
         }
+        // === ここまで ===
+
+        public void MarkSceneRestoreCallbackDeclared() { _hasSceneRestoreCallback = true; }
 
         public void RegisterPrefabMigrationStep(PrefabMigrationStepBase step)
         {
@@ -117,6 +109,29 @@ namespace ECSave
                 UnityEngine.Debug.LogWarning(
                     "[ECSave] RegisterSceneLoadState is set but neither SceneStateProvider nor SceneRestoreCallback is provided. " +
                     "SubScene state will not be tracked or restored.");
+            }
+
+            if (_withSceneStateRollback)
+            {
+                if (_sceneRestoreCallback == null)
+                {
+                    UnityEngine.Debug.LogWarning(
+                        "[ECSave] WithSceneStateRollback is enabled but no SceneRestoreCallback is provided. " +
+                        "Scene state cannot be rolled back on load failure.");
+                }
+                else if (_sceneStateProvider == null)
+                {
+                    UnityEngine.Debug.LogWarning(
+                        "[ECSave] WithSceneStateRollback is enabled but no SceneStateProvider is provided. " +
+                        "Rollback will use inverse of the original requests (best effort).");
+                }
+            }
+
+            if (_contentVerification == ContentVerificationMode.GuidAndContentHash && _sceneStateProvider == null)
+            {
+                UnityEngine.Debug.LogWarning(
+                    "[ECSave] ContentVerificationMode.GuidAndContentHash requires SceneStateProvider " +
+                    "that returns SceneLoadInfo.ContentHash. Verification will be skipped.");
             }
 
             IReadOnlyList<SubSceneDestroyedIdentityHandler> handlers =
@@ -141,6 +156,7 @@ namespace ECSave
                 _tombstoneCapacity,
                 _sceneStateProvider,
                 _sceneRestoreCallback,
+                _prefabIdentityProvider,
                 handlers,
                 _prefabMigrations);
         }

@@ -1,13 +1,8 @@
-﻿// Runtime/Errors/WarningCollector.cs
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Unity.Collections;
 
 namespace ECSave.Internal
 {
-    /// <summary>
-    /// 警告記録の収集（15.4節）。ジョブからは NativeList に書き、メインスレッドで
-    /// LoadWarning（Managed）へ変換する。
-    /// </summary>
     public struct WarningCollector : System.IDisposable
     {
         private NativeList<WarningRecord> _records;
@@ -26,13 +21,9 @@ namespace ECSave.Internal
             _records.Add(record);
         }
 
-        /// <summary>
-        /// LoadWarning のリストへ変換する（15.4節）。
-        /// TypeSectionId → TypeName のマップは SaveDefinition 側の情報を受け取る。
-        /// </summary>
         public void ToLoadWarnings(
-    List<LoadWarning> output,
-    IReadOnlyDictionary<uint, string> typeNameMap)
+            List<LoadWarning> output,
+            IReadOnlyDictionary<uint, string> typeNameMap)
         {
             if (output == null) return;
             if (!_records.IsCreated) return;
@@ -49,7 +40,8 @@ namespace ECSave.Internal
                     r.KindEnum,
                     r.SourceEntity,
                     typeName,
-                    r.SaveEntityIndex));
+                    r.SaveEntityIndex,
+                    r.ExtraHash));
             }
         }
 

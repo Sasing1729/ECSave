@@ -14,7 +14,7 @@ namespace ECSave.Tests
     ///   3. 型付きアクセスと生バイト読み取り値が一致する
     ///   4. 要素数が Entity ごとに異なっても正しく取得できる
     ///   5. 空 Buffer（要素数 0）も取得できる
-    ///   6. 構造変更後は Chunk ポインタが変わる（Chunk をキャッシュしない）
+    ///   6. 構造変更後に再取得すると、新しい要素数が正しく反映される（Chunk をキャッシュしない）
     /// </summary>
     public unsafe class A29_BufferAccessorRawByteTests
     {
@@ -81,9 +81,9 @@ namespace ECSave.Tests
 
             var array = dynamicBuffer.AsNativeArray();
             Assert.AreEqual(3, array.Length);
-            Assert.AreEqual(UnsafeUtility.SizeOf<Item>(), array.Length * UnsafeUtility.SizeOf<Item>() / array.Length);
 
             byte* src = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(array);
+            Assert.IsTrue(src != null, "Raw byte pointer must not be null for non-empty buffer");
 
             int stride = UnsafeUtility.SizeOf<Item>();
             for (int i = 0; i < array.Length; i++)
@@ -154,8 +154,12 @@ namespace ECSave.Tests
             Assert.IsTrue(src == null || array.Length == 0);
         }
 
+        // ★ 修正: 旧テスト名は「ポインタが変わる」ことを示唆していたが、
+        //   実際には「再取得すると新しい長さが読める」ことしか検証していなかった。
+        //   テスト名を意図に合わせて Reacquire_AfterStructuralChange_ReturnsUpdatedLength に変更し、
+        //   ポインタの変化は「保証しない」ことを明記した。
         [Test]
-        public void BufferAccessor_AfterStructuralChange_PointerChanges()
+        public void Reacquire_AfterStructuralChange_ReturnsUpdatedLength()
         {
             var e = _em.CreateEntity();
             var buf = _em.AddBuffer<Item>(e);
@@ -163,13 +167,12 @@ namespace ECSave.Tests
 
             var query = _em.CreateEntityQuery(typeof(Item));
 
-            byte* before;
+            // 1 回目の取得
             {
                 using var chunks = query.ToArchetypeChunkArray(Allocator.TempJob);
                 var handle = _em.GetBufferTypeHandle<Item>(isReadOnly: true);
                 var accessor = chunks[0].GetBufferAccessor(ref handle);
-                var array = accessor[0].AsNativeArray();
-                before = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(array);
+                Assert.AreEqual(1, accessor[0].Length);
             }
 
             // 構造変更：要素を追加
@@ -177,21 +180,12 @@ namespace ECSave.Tests
             for (int i = 0; i < 100; i++)
                 buf2.Add(new Item { Id = i, Count = i });
 
-            byte* after;
-            {
-                using var chunks = query.ToArchetypeChunkArray(Allocator.TempJob);
-                var handle = _em.GetBufferTypeHandle<Item>(isReadOnly: true);
-                var accessor = chunks[0].GetBufferAccessor(ref handle);
-                var array = accessor[0].AsNativeArray();
-                after = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(array);
-            }
-
-            // ポインタが同じでも異なってもよい。キャッシュしないことが要件。
-            // ここでは「再取得すると正しい要素数が取れる」ことだけ確認する。
+            // 再取得すると新しい長さが見える（Chunk をキャッシュしないことの確認）
             using var chunks2 = query.ToArchetypeChunkArray(Allocator.TempJob);
             var h2 = _em.GetBufferTypeHandle<Item>(isReadOnly: true);
             var a2 = chunks2[0].GetBufferAccessor(ref h2);
-            Assert.AreEqual(101, a2[0].Length);
+            Assert.AreEqual(101, a2[0].Length,
+                "構造変更後は Chunk をキャッシュせず再取得する必要がある");
         }
     }
 }

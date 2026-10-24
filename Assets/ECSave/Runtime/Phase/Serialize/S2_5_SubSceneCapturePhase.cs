@@ -41,7 +41,7 @@ namespace ECSave.Phase.Serialize
 
             result.HasSection = true;
             result.Scenes = scenes;
-            result.SectionBodySize = SubSceneStateLayout.ComputeBodySize(scenes.Count);
+            result.SectionBodySize = SubSceneStateLayout.ComputeBodySize(scenes);
             return result;
         }
     }

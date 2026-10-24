@@ -21,13 +21,13 @@ namespace ECSave.Internal
         public WarningCollector Warnings;
         public NativeParallelHashSet<Entity>[] RegisteredTargets;
 
-        // === Phase S1a 追加 ===
         public SubSceneStateSectionView? SubSceneState;
         public SceneLoadRequest[] SubSceneRestoreRequests;
-        // === ここまで ===
-
-        // === Phase S1b 追加 ===
         public IReadOnlyList<D8_5_TombstoneValidationPhase.TombstoneEntry> TombstoneSections;
+        public PrefabIdentitySectionView? PrefabIdentities;
+
+        // === S2b-2 追加 ===
+        public List<PrefabMigrationEntry> PrefabMigrationsToApply;
         // === ここまで ===
 
         public static PrephaseContext Create(SaveDefinition def, World world)
@@ -59,6 +59,8 @@ namespace ECSave.Internal
             NativeData = default;
             PersistentToEntity = default;
             TombstoneSections = null;
+            PrefabIdentities = null;
+            PrefabMigrationsToApply = null;
         }
     }
 }

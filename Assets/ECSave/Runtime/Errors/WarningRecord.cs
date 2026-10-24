@@ -1,28 +1,26 @@
-﻿// Runtime/Errors/WarningRecord.cs
-using Unity.Entities;
+﻿using Unity.Entities;
 
 namespace ECSave.Internal
 {
-    /// <summary>
-    /// Burst ジョブ内で記録する警告（15.4節）。文字列を持たない。
-    /// </summary>
     public struct WarningRecord
     {
-        public byte Kind;           // LoadWarningKind を byte 化
+        public byte Kind;
         public uint TypeSectionId;
         public int SaveEntityIndex;
         public Entity SourceEntity;
+        public ulong ExtraHash;
 
         public LoadWarningKind KindEnum => (LoadWarningKind)Kind;
 
         public static WarningRecord Create(LoadWarningKind kind, uint typeSectionId,
-            int saveEntityIndex, Entity sourceEntity)
+            int saveEntityIndex, Entity sourceEntity, ulong extraHash = 0UL)
             => new WarningRecord
             {
                 Kind = (byte)kind,
                 TypeSectionId = typeSectionId,
                 SaveEntityIndex = saveEntityIndex,
                 SourceEntity = sourceEntity,
+                ExtraHash = extraHash,
             };
     }
 }

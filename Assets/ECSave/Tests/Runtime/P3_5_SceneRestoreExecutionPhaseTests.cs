@@ -141,7 +141,7 @@ namespace ECSave.Tests.Runtime.SubScene
         [Test]
         public void RequiredFailure_ReturnsSceneLoadFailed()
         {
-            LogAssert.Expect(LogType.Error,
+            LogAssert.Expect(LogType.Warning,
                 new System.Text.RegularExpressions.Regex(".*Required scene restore failed.*"));
 
             var warnings = new WarningCollector(Unity.Collections.Allocator.TempJob);
@@ -202,7 +202,8 @@ namespace ECSave.Tests.Runtime.SubScene
         [Test]
         public void MixedOutcomes_RequiredFailure_ReturnsSceneLoadFailed()
         {
-            LogAssert.Expect(LogType.Error,
+            // 修正: Error → Warning
+            LogAssert.Expect(LogType.Warning,
                 new System.Text.RegularExpressions.Regex(".*Required scene restore failed.*"));
 
             var warnings = new WarningCollector(Unity.Collections.Allocator.TempJob);

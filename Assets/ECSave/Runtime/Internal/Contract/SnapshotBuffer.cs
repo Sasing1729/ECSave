@@ -59,6 +59,83 @@ namespace ECSave.Internal
             }
         }
 
+        public unsafe void BulkAppendPlain<T>(NativeArray<Entity> entities, NativeArray<T> values)
+            where T : unmanaged
+        {
+            int count = entities.Length;
+            if (count == 0) return;
+            if (!entities.IsCreated || !values.IsCreated)
+                throw new InvalidOperationException("Async arrays are not created");
+            if (values.Length != count)
+                throw new InvalidOperationException(
+                    $"Async array length mismatch: entities={count}, values={values.Length}");
+            if (IsVariableLength)
+                throw new InvalidOperationException("BulkAppendPlain is not supported in variable-length mode");
+
+            int stride = UnsafeUtility.SizeOf<T>();
+            if (stride != Stride)
+                throw new InvalidOperationException(
+                    $"stride mismatch: T size={stride}, buffer stride={Stride}");
+
+            int eStart = Entities.Length;
+            Entities.ResizeUninitialized(eStart + count);
+            UnsafeUtility.MemCpy(
+                (byte*)Entities.GetUnsafePtr() + (long)eStart * sizeof(Entity),
+                NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(entities),
+                (long)count * sizeof(Entity));
+
+            if (stride > 0)
+            {
+                int vStart = Values.Length;
+                Values.ResizeUninitialized(vStart + count * stride);
+                UnsafeUtility.MemCpy(
+                    (byte*)Values.GetUnsafePtr() + vStart,
+                    NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values),
+                    (long)count * stride);
+            }
+        }
+
+        // === S3a-3B 追加 ===
+        public unsafe void BulkAppendVariable(
+            NativeArray<Entity> entities,
+            NativeArray<int> elementCounts,
+            NativeArray<byte> values)
+        {
+            int count = entities.Length;
+            if (count == 0) return;
+            if (!entities.IsCreated || !elementCounts.IsCreated)
+                throw new InvalidOperationException("Async arrays are not created");
+            if (elementCounts.Length != count)
+                throw new InvalidOperationException(
+                    $"elementCounts.Length={elementCounts.Length} != entities.Length={count}");
+            if (!IsVariableLength)
+                throw new InvalidOperationException("BulkAppendVariable requires variable-length mode");
+
+            int eStart = Entities.Length;
+            Entities.ResizeUninitialized(eStart + count);
+            UnsafeUtility.MemCpy(
+                (byte*)Entities.GetUnsafePtr() + (long)eStart * sizeof(Entity),
+                NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(entities),
+                (long)count * sizeof(Entity));
+
+            int rStart = RecordLengths.Length;
+            RecordLengths.ResizeUninitialized(rStart + count);
+            UnsafeUtility.MemCpy(
+                (byte*)RecordLengths.GetUnsafePtr() + (long)rStart * sizeof(int),
+                NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(elementCounts),
+                (long)count * sizeof(int));
+
+            if (values.IsCreated && values.Length > 0)
+            {
+                int vStart = Values.Length;
+                Values.ResizeUninitialized(vStart + values.Length);
+                UnsafeUtility.MemCpy(
+                    (byte*)Values.GetUnsafePtr() + vStart,
+                    NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values),
+                    values.Length);
+            }
+        }
+
         public unsafe void Append(Entity entity, byte* value)
         {
             if (IsVariableLength)

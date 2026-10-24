@@ -196,14 +196,17 @@ namespace ECSave.Tests.Generator
                 em2.AddComponentData(x, new GenPlayerId { Value = 2 });
                 em2.AddComponentData(x, new GenHealth { Current = 0, Max = 0 });
 
+                // DeletionPolicy.None: 既存 Entity は削除されない。
+                // Tombstone が無効（識別型未登録）でも x が削除されないことを検証。
                 var load = sys.DeserializeAsync(_world, save.Data,
-                    RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
+                    RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
 
                 var q = em2.CreateEntityQuery(typeof(GenPlayerId));
                 Assert.That(q.CalculateEntityCount(), Is.EqualTo(1),
-                    "Without identity registration, existing entity is not considered matched or destroyed");
+                    "Without identity registration, the tombstone cannot match; " +
+                    "the existing entity must be preserved under DeletionPolicy.None");
             }
             finally
             {
@@ -240,14 +243,18 @@ namespace ECSave.Tests.Generator
                 em2.AddComponentData(x, new GenPlayerId { Value = 2 });
                 em2.AddComponentData(x, new GenHealth { Current = 0, Max = 0 });
 
+                // ConfigureSubScene 未オーバーライド → RegisterDestroyedEntities 無効
+                // → Tombstone セクションが生成されず、P6.5 が何もしない。
+                // DeletionPolicy.None で既存 Entity が残ることを検証。
                 var load = sys.DeserializeAsync(_world, save.Data,
-                    RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
+                    RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
 
                 var q = em2.CreateEntityQuery(typeof(GenPlayerId));
                 Assert.That(q.CalculateEntityCount(), Is.EqualTo(1),
-                    "Without RegisterDestroyedEntities, tombstones are ignored");
+                    "Without RegisterDestroyedEntities, tombstones are not written; " +
+                    "the existing entity must be preserved under DeletionPolicy.None");
             }
             finally { ScriptableObject.DestroyImmediate(scope); }
 

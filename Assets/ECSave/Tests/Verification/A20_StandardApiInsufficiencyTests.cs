@@ -7,6 +7,10 @@ namespace ECSave.Tests
 {
     public struct A20Data : IComponentData { public int Value; public Entity Ref; }
     public struct A20Enableable : IComponentData, IEnableableComponent { public int Value; }
+    public struct A20Shared : ISharedComponentData
+    {
+        public int Value;
+    }
 
     public class A20_StandardApiInsufficiencyTests
     {
@@ -185,47 +189,48 @@ namespace ECSave.Tests
         }
 
         [Test]
-        public void ToComponentDataArray_DoesNotCoverSharedComponent()
+        public void SharedComponent_MustBeFetchedPerEntity_NotViaToComponentDataArray()
         {
-            _em.CreateEntity(typeof(A20Data));
+            var e = _em.CreateEntity();
+            _em.AddSharedComponent(e, new A20Shared { Value = 42 });
 
-            var q = _em.CreateEntityQuery(typeof(A20Data));
-            bool threw = false;
-            try
-            {
-                var shared = q.ToComponentDataArray<A20Data>(Allocator.TempJob);
-                shared.Dispose();
-            }
-            catch (System.Exception ex)
-            {
-                threw = true;
-                Debug.Log($"[A-20] 例外: {ex.GetType().Name}");
-            }
+            var v = _em.GetSharedComponent<A20Shared>(e);
+            Assert.AreEqual(42, v.Value,
+                "SharedComponent は GetSharedComponent<T> による個別取得が必須");
 
+            // 参考: ToComponentDataArray<T> は where T : unmanaged, IComponentData の
+            // 制約を持つため、ISharedComponentData を型引数に与えるとコンパイルできない。
+            // これは ECSave 側で Shared モジュールを別系統で扱う根拠になる。
             Debug.Log("[A-20] ToComponentDataArray は ISharedComponentData を扱えない。" +
-                      "SharedComponent は別 API（GetSharedComponent）で個別取得が必要");
-            Assert.IsFalse(threw);
+                      "SharedComponent は GetSharedComponent / EntityQuery.SetSharedComponent で" +
+                      "個別 API を使う必要がある");
         }
 
+        // ★ 修正: NativeArray<T> の FullName はジェネリック型引数まで含むため、
+        //   GetGenericTypeDefinition().FullName を使う。
+        //   例: "Unity.Collections.NativeArray`1[[ECSave.Tests.A20Data, ...]]"
+        //       → GetGenericTypeDefinition().FullName = "Unity.Collections.NativeArray`1"
         [Test]
-        public void ManagedArray_AllocatesGC_AndLosesRawBytes()
+        public void ToComponentDataArray_ReturnsNativeArray_NotManagedArray()
         {
             var arch = _em.CreateArchetype(typeof(A20Data));
             _em.CreateEntity(arch, 1000, Allocator.TempJob);
 
             var q = _em.CreateEntityQuery(typeof(A20Data));
-
-            long gcBefore = System.GC.GetTotalMemory(false);
             var arr = q.ToComponentDataArray<A20Data>(Allocator.TempJob);
-            long gcAfter = System.GC.GetTotalMemory(false);
-
             try
             {
-                long diff = gcAfter - gcBefore;
-                Debug.Log($"[A-20] ToComponentDataArray GC delta: {diff} bytes " +
-                          $"(NativeArray のため managed GC は増えない)");
-
                 Assert.AreEqual(1000, arr.Length);
+
+                var arrType = arr.GetType();
+                Assert.IsTrue(arrType.IsGenericType, "NativeArray<T> は generic 型");
+
+                // ジェネリック型引数を含まない定義側の完全修飾名で比較する
+                var defFullName = arrType.GetGenericTypeDefinition().FullName;
+                Assert.AreEqual("Unity.Collections.NativeArray`1", defFullName,
+                    $"ToComponentDataArray の戻り値は NativeArray<T> である必要がある（実際: {defFullName}）");
+
+                Debug.Log($"[A-20] ToComponentDataArray return type = {defFullName}<{arrType.GetGenericArguments()[0].Name}>");
                 Debug.Log("[A-20] ToComponentDataArray は NativeArray を返すため、" +
                           "生バイトの直接操作（Section 表の書き込み）には使えない。" +
                           "ECSave は独自の Format 層を持つ必要がある（要件 3.1）");

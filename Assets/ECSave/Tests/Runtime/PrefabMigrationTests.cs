@@ -6,108 +6,178 @@ using ECSave.Internal;
 namespace ECSave.Tests.Runtime.SubScene
 {
     [TestFixture]
-    public sealed class PrefabMigrationContextTests
+    public sealed class PrefabSchemaRegistryTests
     {
+        [SetUp]
+        public void SetUp() => PrefabSchemaRegistry.Clear();
+
+        [TearDown]
+        public void TearDown() => PrefabSchemaRegistry.Clear();
+
         [Test]
-        public void Default_HasZeroLength()
+        public void Register_Get_Works()
         {
-            var ctx = default(PrefabMigrationContext);
-            Assert.That(ctx.NewLength, Is.EqualTo(0));
-            Assert.That(ctx.OldData.Length, Is.EqualTo(0));
-            Assert.That(ctx.NewBuffer.Length, Is.EqualTo(0));
+            PrefabSchemaRegistry.Register(0xAAAA, 0xBBBB);
+            Assert.That(PrefabSchemaRegistry.TryGet(0xAAAA, out var hash), Is.True);
+            Assert.That(hash, Is.EqualTo(0xBBBBUL));
         }
 
         [Test]
-        public void WithOldDataAndBuffer_ExposesSpans()
+        public void Register_ZeroGuid_Ignored()
         {
-            var old = new byte[] { 1, 2, 3 };
-            var newBuf = new byte[8];
-            var ctx = new PrefabMigrationContext
-            {
-                OldData = old,
-                NewBuffer = newBuf,
-                NewLength = 0,
-            };
-            Assert.That(ctx.OldData.Length, Is.EqualTo(3));
-            Assert.That(ctx.NewBuffer.Length, Is.EqualTo(8));
+            PrefabSchemaRegistry.Register(0UL, 0xBBBB);
+            Assert.That(PrefabSchemaRegistry.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void MigrationCanWriteToNewBuffer()
+        public void TryGet_Unknown_ReturnsFalse()
         {
-            var old = new byte[] { 1, 2 };
-            var newBuf = new byte[4];
-            var ctx = new PrefabMigrationContext
-            {
-                OldData = old,
-                NewBuffer = newBuf,
-                NewLength = 0,
-            };
-            ctx.OldData.CopyTo(ctx.NewBuffer);
-            ctx.NewLength = 2;
+            Assert.That(PrefabSchemaRegistry.TryGet(0xCCCC, out _), Is.False);
+        }
 
-            Assert.That(ctx.NewBuffer[0], Is.EqualTo(1));
-            Assert.That(ctx.NewBuffer[1], Is.EqualTo(2));
-            Assert.That(ctx.NewLength, Is.EqualTo(2));
+        [Test]
+        public void Register_Overwrites()
+        {
+            PrefabSchemaRegistry.Register(0xAAAA, 0xBBBB);
+            PrefabSchemaRegistry.Register(0xAAAA, 0xCCCC);
+            Assert.That(PrefabSchemaRegistry.TryGet(0xAAAA, out var hash), Is.True);
+            Assert.That(hash, Is.EqualTo(0xCCCCUL));
+        }
+
+        [Test]
+        public void Clear_RemovesAll()
+        {
+            PrefabSchemaRegistry.Register(0xAAAA, 0xBBBB);
+            PrefabSchemaRegistry.Clear();
+            Assert.That(PrefabSchemaRegistry.Count, Is.EqualTo(0));
         }
     }
 
     [TestFixture]
-    public sealed class PrefabMigrationStepBaseTests
+    public sealed class PrefabMigrationTableTests
     {
-        private sealed class ConcreteStep : PrefabMigrationStepBase
+        private sealed class TestStep : PrefabMigrationStepBase
         {
-            public override ulong OldPrefabSchemaHash => 0xAAAA;
-            public override ulong NewPrefabSchemaHash => 0xBBBB;
-            public override void Migrate(ref PrefabMigrationContext context)
+            private readonly ulong _old;
+            private readonly ulong _new;
+            public override ulong OldPrefabSchemaHash => _old;
+            public override ulong NewPrefabSchemaHash => _new;
+            public override void Migrate(ref PrefabMigrationContext context) { }
+
+            public TestStep(ulong oldHash, ulong newHash)
             {
-                context.NewLength = 0;
+                _old = oldHash;
+                _new = newHash;
             }
         }
 
         [Test]
-        public void DerivedClass_ImplementsAbstractMembers()
+        public void From_Null_ReturnsEmpty()
         {
-            var step = new ConcreteStep();
-            Assert.That(step.OldPrefabSchemaHash, Is.EqualTo(0xAAAAUL));
-            Assert.That(step.NewPrefabSchemaHash, Is.EqualTo(0xBBBBUL));
+            var table = PrefabMigrationTable.From(null);
+            Assert.That(table.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void Migrate_InvokesWithoutThrowing()
+        public void ResolveChain_SingleStep_ReturnsArray()
         {
-            var step = new ConcreteStep();
-            var ctx = new PrefabMigrationContext
+            var table = PrefabMigrationTable.From(new PrefabMigrationStepBase[]
             {
-                OldData = new byte[0],
-                NewBuffer = new byte[0],
-                NewLength = 0,
-            };
+                new TestStep(0x1UL, 0x2UL),
+            });
 
-            // ref struct のため Assert.DoesNotThrow(ラムダ) は使えない。
-            // 直接呼び出しで例外が発生しなければ成功。
-            step.Migrate(ref ctx);
-
-            Assert.That(ctx.NewLength, Is.EqualTo(0));
-        }
-    }
-
-    [TestFixture]
-    public sealed class IPrefabMigrationTests
-    {
-        private sealed class UserMigration : IPrefabMigration
-        {
-            public ulong OldPrefabSchemaHash => 1;
-            public ulong NewPrefabSchemaHash => 2;
-            public void Migrate(ref PrefabMigrationContext context) { }
+            var chain = table.ResolveChain(0x1UL, 0x2UL);
+            Assert.That(chain, Is.Not.Null);
+            Assert.That(chain.Length, Is.EqualTo(1));
         }
 
         [Test]
-        public void InterfaceCanBeImplemented()
+        public void ResolveChain_MultiStep_ReturnsChain()
         {
-            IPrefabMigration m = new UserMigration();
-            Assert.That(m.OldPrefabSchemaHash, Is.EqualTo(1UL));
-            Assert.That(m.NewPrefabSchemaHash, Is.EqualTo(2UL));
+            var table = PrefabMigrationTable.From(new PrefabMigrationStepBase[]
+            {
+                new TestStep(0x1UL, 0x2UL),
+                new TestStep(0x2UL, 0x3UL),
+                new TestStep(0x3UL, 0x4UL),
+            });
+
+            var chain = table.ResolveChain(0x1UL, 0x4UL);
+            Assert.That(chain, Is.Not.Null);
+            Assert.That(chain.Length, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void ResolveChain_SameHash_ReturnsEmpty()
+        {
+            var table = PrefabMigrationTable.From(Array.Empty<PrefabMigrationStepBase>());
+            var chain = table.ResolveChain(0x1UL, 0x1UL);
+            Assert.That(chain, Is.Empty);
+        }
+
+        [Test]
+        public void ResolveChain_NoPath_ReturnsNull()
+        {
+            var table = PrefabMigrationTable.From(new PrefabMigrationStepBase[]
+            {
+                new TestStep(0x1UL, 0x2UL),
+            });
+            var chain = table.ResolveChain(0x1UL, 0x99UL);
+            Assert.That(chain, Is.Null);
+        }
+
+        [Test]
+        public void Register_DuplicateOldHash_Throws()
+        {
+            var table = new PrefabMigrationTable();
+            table.Register(new TestStep(0x1UL, 0x2UL));
+            Assert.Throws<InvalidOperationException>(
+                () => table.Register(new TestStep(0x1UL, 0x3UL)));
+        }
+
+        [Test]
+        public void ResolveChain_Cycle_ReturnsNull()
+        {
+            var table = PrefabMigrationTable.From(new PrefabMigrationStepBase[]
+            {
+                new TestStep(0x1UL, 0x2UL),
+                new TestStep(0x2UL, 0x1UL),
+            });
+
+            // 0x1 → 0x99 doesn't exist, chain loop hits cycle and returns null
+            var chain = table.ResolveChain(0x1UL, 0x99UL);
+            Assert.That(chain, Is.Null);
+        }
+
+        [Test]
+        public void Register_Null_Throws()
+        {
+            var table = new PrefabMigrationTable();
+            Assert.Throws<ArgumentNullException>(() => table.Register(null));
+        }
+
+        [Test]
+        public void From_ContainsNull_Ignored()
+        {
+            var table = PrefabMigrationTable.From(new PrefabMigrationStepBase[]
+            {
+                new TestStep(0x1UL, 0x2UL),
+                null,
+                new TestStep(0x3UL, 0x4UL),
+            });
+            Assert.That(table.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ResolveChain_ExceedsMaxChainLength_ReturnsNull()
+        {
+            // 33-step chain (MaxChain=32) should fail to resolve
+            var steps = new PrefabMigrationStepBase[33];
+            for (int i = 0; i < 33; i++)
+                steps[i] = new TestStep((ulong)(i + 1), (ulong)(i + 2));
+
+            var table = PrefabMigrationTable.From(steps);
+            var chain = table.ResolveChain(1UL, 34UL);
+            Assert.That(chain, Is.Null);
         }
     }
 }

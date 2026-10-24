@@ -1,5 +1,4 @@
-﻿// Runtime/Format/IO/ByteWriter.cs
-using System;
+﻿using System;
 using Unity.Collections;
 
 namespace ECSave.Format
@@ -74,6 +73,17 @@ namespace ECSave.Format
         }
 
         public void WriteI32(int v) => WriteU32(unchecked((uint)v));
+
+        public void WriteI8(sbyte v) => WriteU8(unchecked((byte)v));
+        public void WriteI16(short v) => WriteU16(unchecked((ushort)v));
+        public void WriteI64(long v) => WriteU64(unchecked((ulong)v));
+        public void WriteBool(bool v) => WriteU8(v ? (byte)1 : (byte)0);
+
+        public void Skip(int count)
+        {
+            Ensure(count);
+            _offset += count;
+        }
 
         public void WriteBytes(byte* src, int count)
         {

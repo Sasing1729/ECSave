@@ -23,6 +23,13 @@ namespace ECSave.Internal
         public abstract ulong NewSchemaHash { get; }
 
         /// <summary>
+        /// このステップ適用後のレコードストライド（NewType のサイズ）。
+        /// 連鎖 Migration の中間バッファサイズ決定に使用する。
+        /// 旧版の生成コードでは 0 を返す（単段 Migration のみ動作）。
+        /// </summary>
+        public virtual int NewRecordStride => 0;
+
+        /// <summary>
         /// 1 レコードを変換する。旧 Reader から読み、新 Writer に書く（11.2節）。
         /// </summary>
         public abstract void Migrate(ref ByteReader reader, ref ByteWriter writer);

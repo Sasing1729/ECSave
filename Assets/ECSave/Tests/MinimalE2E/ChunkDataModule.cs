@@ -12,6 +12,13 @@ namespace Game.MinimalE2E
         private static readonly ulong s_schemaHash = SchemaHashCore.Hash(s_schemaHashInput);
         private static readonly string[] s_fieldNames = { "Value" };
 
+        // B-5: SaveTypeModuleChunk<T>.EntityRefOffsets が abstract 化されたため、
+        // サブクラスは必ず override を提供する必要がある。
+        // 本モジュールは Entity フィールドを持たないため空配列。
+        private static readonly int[] s_entityRefOffsets = System.Array.Empty<int>();
+
+        public override int[] EntityRefOffsets => s_entityRefOffsets;
+
         public override ulong SchemaHash => s_schemaHash;
         public override string FullTypeName => TypeFullName;
         public override byte[] SchemaHashInput => s_schemaHashInput;

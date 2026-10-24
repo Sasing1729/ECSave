@@ -170,6 +170,107 @@ namespace ECSave.Tests.Runtime
         }
 
         [Test]
+        public void MigratedData_ReloadsWithoutRenamedFrom()
+        {
+            // 1. 旧名 + 旧レイアウト (HealthV1) で保存
+            var data = SaveWith(new SaveTypeModule[] { new OldNameHealthV1Module() }, em =>
+            {
+                var e = em.CreateEntity();
+                em.AddComponentData(e, new HealthV1 { Value = 42 });
+            });
+            Restart();
+
+            // 2. RenamedFrom + Migration でロード（移行）
+            var sysMigrated = NewSystem(t =>
+            {
+                t.RegisterRenamed(H(OldName), H(NewName));
+                t.Register(new HealthV1ToV2Migration());
+            }, new HealthModule());
+
+            var load1 = Load(sysMigrated, data);
+            Assert.IsTrue(load1.IsSuccess, $"Migration load failed: {load1.ErrorCode}");
+
+            var q1 = _world.EntityManager.CreateEntityQuery(typeof(Health));
+            using (var vals1 = q1.ToComponentDataArray<Health>(Allocator.Temp))
+            {
+                Assert.AreEqual(1, vals1.Length);
+                Assert.AreEqual(42, vals1[0].Current);
+            }
+
+            // 3. 移行後のデータを再保存
+            var saveMigrated = sysMigrated.SerializeAsync(_world).GetAwaiter().GetResult();
+            Assert.IsTrue(saveMigrated.IsSuccess, $"Re-save failed: {saveMigrated.ErrorCode}");
+
+            // 4. RenamedFrom 未登録の SaveDefinition で再ロード
+            //    D6_MigrationPhase の NameHash 更新により、移行後のデータは
+            //    新名で書かれているはずなので、RenamedFrom なしでも解決できる。
+            Restart();
+            var sysPlain = NewSystem(null, new HealthModule());
+            var load2 = Load(sysPlain, saveMigrated.Data);
+
+            Assert.IsTrue(load2.IsSuccess, $"Plain reload failed: {load2.ErrorCode}");
+
+            bool hasUnknownWarning = false;
+            for (int i = 0; i < load2.Warnings.Count; i++)
+            {
+                if (load2.Warnings[i].Kind == LoadWarningKind.UnknownSectionIgnored)
+                    hasUnknownWarning = true;
+            }
+            Assert.IsFalse(hasUnknownWarning,
+                "Migrated data should have NameHash updated to the new name; " +
+                "reloading without RenamedFrom should not emit UnknownSectionIgnored");
+
+            var q2 = _world.EntityManager.CreateEntityQuery(typeof(Health));
+            using (var vals2 = q2.ToComponentDataArray<Health>(Allocator.Temp))
+            {
+                Assert.AreEqual(1, vals2.Length);
+                Assert.AreEqual(42, vals2[0].Current);
+                Assert.AreEqual(0, vals2[0].Max);
+            }
+        }
+
+        [Test]
+        public void MigratedData_ReMigratedFromOldLayout_StillWorks()
+        {
+            // より踏み込んだ検証：旧名 + 旧レイアウト → RenamedFrom + Migration →
+            // さらに「旧名 + 旧レイアウト」から再ロードできること。
+            // これは移行後のデータの NameHash が新名になり、かつ SchemaHash が
+            // 新レイアウトのハッシュになっていることの確認。
+            var dataOld = SaveWith(new SaveTypeModule[] { new OldNameHealthV1Module() }, em =>
+            {
+                var e = em.CreateEntity();
+                em.AddComponentData(e, new HealthV1 { Value = 7 });
+            });
+            Restart();
+
+            var sysMigrated = NewSystem(t =>
+            {
+                t.RegisterRenamed(H(OldName), H(NewName));
+                t.Register(new HealthV1ToV2Migration());
+            }, new HealthModule());
+
+            var load1 = Load(sysMigrated, dataOld);
+            Assert.IsTrue(load1.IsSuccess, $"Migration load failed: {load1.ErrorCode}");
+
+            var resaved = sysMigrated.SerializeAsync(_world).GetAwaiter().GetResult();
+            Assert.IsTrue(resaved.IsSuccess);
+
+            // 再保存データは「新名 + 新レイアウト」になっている。
+            // HealthV1ToV2Migration は旧 V1 から新 V2 への変換だが、
+            // 新名で保存されている以上、追加の Migration は不要。
+            Restart();
+            var sysPlain = NewSystem(null, new HealthModule());
+            var load2 = Load(sysPlain, resaved.Data);
+            Assert.IsTrue(load2.IsSuccess);
+
+            var q = _world.EntityManager.CreateEntityQuery(typeof(Health));
+            using var vals = q.ToComponentDataArray<Health>(Allocator.Temp);
+            Assert.AreEqual(1, vals.Length);
+            Assert.AreEqual(7, vals[0].Current);
+            Assert.AreEqual(0, vals[0].Max);
+        }
+
+        [Test]
         public void OldAndNewSectionsBothPresent_ReturnsSchemaMismatch()
         {
             var data = SaveWith(
@@ -244,10 +345,32 @@ namespace ECSave.Tests.Runtime
         }
 
         [Test]
+        public void Builder_RenamedFromSameAsCurrentNameWithPlus_StillThrows()
+        {
+            // B-8: oldName の '+' → '.' 正規化により、リフレクション形式の
+            // "Game.Domain+Health" も現在名と等しいと判定される。
+            var impl = new SaveDefinitionBuilderImpl();
+            var ex = Assert.Throws<SaveRegistrationException>(
+                () => impl.RegisterComponent<Health>().RenamedFrom("Game.Domain+Health"));
+            Assert.AreEqual("ECSAVE-R006", ex.Code);
+        }
+
+        [Test]
         public void Builder_SameOldNameForDifferentTypes_Throws()
         {
             var impl = new SaveDefinitionBuilderImpl();
             impl.RegisterComponent<Health>().RenamedFrom("Old.Shared");
+            var ex = Assert.Throws<SaveRegistrationException>(
+                () => impl.RegisterComponent<HealthV1>().RenamedFrom("Old.Shared"));
+            Assert.AreEqual("ECSAVE-R007", ex.Code);
+        }
+
+        [Test]
+        public void Builder_SameOldNameDifferentFormat_Collides()
+        {
+            // B-8: "Old+Shared" と "Old.Shared" は正規化後に同一視される。
+            var impl = new SaveDefinitionBuilderImpl();
+            impl.RegisterComponent<Health>().RenamedFrom("Old+Shared");
             var ex = Assert.Throws<SaveRegistrationException>(
                 () => impl.RegisterComponent<HealthV1>().RenamedFrom("Old.Shared"));
             Assert.AreEqual("ECSAVE-R007", ex.Code);
@@ -265,6 +388,18 @@ namespace ECSave.Tests.Runtime
         }
 
         [Test]
+        public void Builder_SamePairMixedFormat_IsIdempotent()
+        {
+            // B-8: "Old+A" と "Old.A" は正規化後に同一ペアと判定され、
+            // 二重登録例外（ECSAVE-R007）にならない。
+            var impl = new SaveDefinitionBuilderImpl();
+            impl.RegisterComponent<Health>().RenamedFrom("Old+A").RenamedFrom("Old.A");
+
+            var def = impl.Build();
+            Assert.AreEqual(1, def.Migrations.RenamedCount);
+        }
+
+        [Test]
         public void Builder_ChainedRenames_AllRegistered()
         {
             var impl = new SaveDefinitionBuilderImpl();
@@ -276,6 +411,29 @@ namespace ECSave.Tests.Runtime
             Assert.IsTrue(def.Migrations.TryResolveRenamed(H("Old.B"), out var b));
             Assert.AreEqual(H(NewName), a);
             Assert.AreEqual(H(NewName), b);
+        }
+
+        [Test]
+        public void Builder_RenamedFromWithPlus_IsNormalizedToDot()
+        {
+            // B-8 の直接検証：リフレクション形式 "A.B+Inner" を
+            // Roslyn 形式 "A.B.Inner" に正規化して登録する。
+            var impl = new SaveDefinitionBuilderImpl();
+            impl.RegisterComponent<Health>().RenamedFrom("Game.Domain+OldHealth");
+
+            var def = impl.Build();
+            Assert.IsNotNull(def.Migrations);
+
+            // 正規化された '.' 形式で解決できる
+            Assert.IsTrue(def.Migrations.TryResolveRenamed(
+                H("Game.Domain.OldHealth"), out var target));
+            Assert.AreEqual(H(NewName), target);
+
+            // '+' 形式のままでは解決できない（正規化により '.' に置換されているため）
+            Assert.IsFalse(def.Migrations.TryResolveRenamed(
+                H("Game.Domain+OldHealth"), out _),
+                "'+' must be normalized to '.' before hashing; " +
+                "raw '+' form should not be reachable");
         }
     }
 }

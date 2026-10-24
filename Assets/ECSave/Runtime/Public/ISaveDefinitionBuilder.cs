@@ -15,5 +15,12 @@ namespace ECSave
         void SelectEntityReferences<T>(Func<T, Entity> field) where T : unmanaged, IBufferElementData;
         void GameDataVersion(int version);
         void WorldId(string id);
+
+        /// <summary>
+        /// FixedString の自動修復（P7.2）を無効化する。
+        /// 無効化した場合、Deserialize 時に切詰め疑いを検出しても警告のみで、
+        /// データは変更しない。デフォルトは有効（自動修復する）。
+        /// </summary>
+        void DisableAutoRepairFixedString();
     }
 }

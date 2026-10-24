@@ -127,7 +127,7 @@ namespace ECSave.Tests.Generator
         [UnityTest]
         public IEnumerator SubScene_RequiredFailure_ReturnsSceneLoadFailed()
         {
-            LogAssert.Expect(LogType.Error,
+            LogAssert.Expect(LogType.Warning,
                 new System.Text.RegularExpressions.Regex(".*Required scene restore failed.*"));
 
             var scope = CreateScope<GenSubSceneScope>();
@@ -135,8 +135,8 @@ namespace ECSave.Tests.Generator
             {
                 GenSubSceneScope.NextProviderResult = new[]
                 {
-            new SceneLoadInfo(new SceneGuid(1, 2), SceneLoadState.Loaded, SceneRestoreMode.Required),
-        };
+                    new SceneLoadInfo(new SceneGuid(1, 2), SceneLoadState.Loaded, SceneRestoreMode.Required),
+                };
                 GenSubSceneScope.NextCallback = reqs =>
                 {
                     var outcomes = new SceneLoadOutcome[reqs.Length];

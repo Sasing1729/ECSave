@@ -13,233 +13,500 @@ using FormatException = ECSave.Format.FormatException;
 
 namespace ECSave.Internal
 {
-    internal sealed unsafe class DeserializeOperation
+    internal sealed unsafe class DeserializeOperation : IDisposable
     {
+        private enum Stage : byte
+        {
+            Start = 0,
+            Validated = 1,
+            Planned = 2,
+            Done = 3,
+        }
+
         private readonly SaveDefinition _def;
         private readonly World _world;
         private readonly byte[] _data;
         private readonly RestorationScope _scope;
         private readonly DeletionPolicy _policy;
+        private readonly Action<OperationPhase> _onPhaseChanged;
+
+        private Stage _stage;
+        private LoadResult _result;
+        private bool _disposed;
+        private OperationPhase _lastNotifiedPhase = OperationPhase.None;
+
+        private PrephaseContext _ctx;
+        private bool _ctxInitialized;
+
+        private NativeList<Entity> _destroyTargets;
+        private bool _destroyTargetsCreated;
+
+        private ApplyJournal _journal;
+        private NativeArray<Entity> _updateArray;
+        private bool _updateArrayCreated;
+        private NativeList<Entity> _updateTargets;
+        private bool _updateTargetsCreated;
+
+        public bool IsComplete => _stage == Stage.Done;
+        public LoadResult Result => _result;
+
+        public OperationPhase CurrentPhase => _stage switch
+        {
+            Stage.Start => OperationPhase.D1_StructureValidation,
+            Stage.Validated => OperationPhase.D9_AwaitApply,
+            Stage.Planned => OperationPhase.P3_Generate,
+            Stage.Done => OperationPhase.P8_Commit,
+            _ => OperationPhase.None,
+        };
 
         public DeserializeOperation(
             SaveDefinition def,
             World world,
             byte[] data,
             RestorationScope scope,
-            DeletionPolicy policy)
+            DeletionPolicy policy,
+            Action<OperationPhase> onPhaseChanged = null)
         {
             _def = def;
             _world = world;
             _data = data;
             _scope = scope;
             _policy = policy;
+            _onPhaseChanged = onPhaseChanged;
         }
 
         public LoadResult Execute(CancellationToken ct)
         {
-            var ctx = PrephaseContext.Create(_def, _world);
             try
             {
-                var err = D0_InputCopyPhase.Execute(ref ctx, _data, _def, _world, ct);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D1_StructureValidationPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D2_ChecksumVerificationPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D3_VersionCheckPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D4_WorldIdCheckPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D5_SchemaMatchPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D6_MigrationPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D4_5_SubSceneMatchPhase.Execute(
-                    _def.SubScene,
-                    ctx.SectionTable,
-                    ctx.View,
-                    out var subSceneState,
-                    out _);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-                ctx.SubSceneState = subSceneState;
-
-                err = D7_EntityRefValidationPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D8_RecordValidationPhase.Execute(ref ctx);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = D8_5_TombstoneValidationPhase.Execute(
-                    ref ctx, out var tombstoneEntries);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-                ctx.TombstoneSections = tombstoneEntries;
-
-                err = P1_PlanPhase.Execute(ref ctx, _policy);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                err = P1_5_SceneRestorePlanPhase.Execute(
-                    _def.SubScene,
-                    ctx.SubSceneState,
-                    out var restoreRequests);
-                if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-                ctx.SubSceneRestoreRequests = restoreRequests;
-
-                var destroyTargets = new NativeList<Entity>(16, Allocator.TempJob);
-                try
-                {
-                    err = P1_DeletionPlanPhase.Execute(
-                        ref ctx, _scope, _policy, destroyTargets);
-                    if (err != SaveLoadErrorCode.None) return LoadResult.Failure(err);
-
-                    return ApplyPhase(ref ctx, destroyTargets, ct);
-                }
-                finally
-                {
-                    if (destroyTargets.IsCreated) destroyTargets.Dispose();
-                }
+                while (!MoveNext(ct)) { }
+                return _result;
             }
             finally
             {
-                ctx.Dispose();
+                Dispose();
             }
         }
 
-        private LoadResult ApplyPhase(
-            ref PrephaseContext ctx,
-            NativeList<Entity> destroyTargets,
-            CancellationToken ct)
+        public bool MoveNext(CancellationToken ct)
         {
-            var em = _world.EntityManager;
-            var journal = new ApplyJournal(Allocator.Persistent);
-            var updateTargets = new NativeList<Entity>(16, Allocator.TempJob);
+            if (_stage == Stage.Done) return true;
 
             try
             {
-                for (int i = 0; i < ctx.PersistentToEntity.Length; i++)
+                switch (_stage)
                 {
-                    var e = ctx.PersistentToEntity[i];
-                    if (e != Entity.Null) updateTargets.Add(e);
-                }
+                    case Stage.Start:
+                        NotifyPhase(OperationPhase.D1_StructureValidation);
+                        if (!DoPrephase(ct)) { _stage = Stage.Done; return true; }
+                        _stage = Stage.Validated;
+                        return false;
 
-                var updateArray = new NativeArray<Entity>(
-                    updateTargets.Length, Allocator.TempJob);
+                    case Stage.Validated:
+                        NotifyPhase(OperationPhase.D9_AwaitApply);
+                        if (!DoPlanAndBackup(ct)) { _stage = Stage.Done; return true; }
+                        _stage = Stage.Planned;
+                        return false;
 
-                for (int i = 0; i < updateTargets.Length; i++)
-                    updateArray[i] = updateTargets[i];
-
-                try
-                {
-                    journal.Backup(ctx.Definition, updateArray, em);
-
-                    bool success = false;
-                    try
-                    {
-                        if (FaultInjector.ShouldFail("P3"))
-                            throw new InvalidOperationException("Injected P3");
-
-                        CreateEntitiesForNonChunkSections(
-                            ref ctx, journal, em);
-
-                        for (int i = 0; i < ctx.SectionTable.Count; i++)
-                        {
-                            ref var entry = ref ctx.SectionTable.Entries[i];
-                            if (entry.Kind != SectionKind.Identity) continue;
-
-                            var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                            CreateEntitiesForSection(
-                                bodyView, ctx.PersistentToEntity, journal, em);
-                        }
-
-                        if (ct.IsCancellationRequested)
-                            throw new InvalidOperationException("Cancelled");
-
-                        if (FaultInjector.ShouldFail("P4"))
-                            throw new InvalidOperationException("Injected P4");
-
-                        ApplyNonChunkModules(ref ctx, em);
-                        ApplyIdentityModules(ref ctx, em);
-
-                        if (P4_StructuralChangePhase.Execute(ref ctx, _policy, em)
-                            != SaveLoadErrorCode.None)
-                            throw new InvalidOperationException("P4 removal failed");
-
-                        ApplyChunkModules(ref ctx, em);
-
-                        if (P6_ChunkComponentRestorePhase.Execute(ref ctx, em)
-                            != SaveLoadErrorCode.None)
-                            throw new InvalidOperationException("P6 failed");
-
-                        if (FaultInjector.ShouldFail("P5"))
-                            throw new InvalidOperationException("Injected P5");
-
-                        var p35 = P3_5_SceneRestoreExecutionPhase.Execute(
-                            _def.SubScene,
-                            ctx.SubSceneRestoreRequests,
-                            ref ctx.Warnings);
-                        if (p35 != SaveLoadErrorCode.None)
-                        {
-                            if (!journal.Rollback(updateArray, em))
-                                return LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
-                            success = true;
-                            return LoadResult.Failure(p35);
-                        }
-
-                        var p65 = P6_5_TombstoneApplyPhase.Execute(
-                            ref ctx, em, destroyTargets);
-                        if (p65 != SaveLoadErrorCode.None)
-                            throw new InvalidOperationException("P6.5 failed: " + p65);
-
-                        if (FaultInjector.ShouldFail("P7"))
-                            throw new InvalidOperationException("Injected P7");
-
-                        if (destroyTargets.IsCreated && destroyTargets.Length > 0)
-                            em.DestroyEntity(destroyTargets.AsArray());
-
-                        success = true;
-                    }
-                    finally
-                    {
-                        if (!success)
-                        {
-                            if (!journal.Rollback(updateArray, em))
-                                throw new InvalidOperationException("Rollback failed");
-                        }
-                    }
-
-                    var warnings = new List<LoadWarning>();
-                    ctx.Warnings.ToLoadWarnings(
-                        warnings, BuildTypeNameMap(ref ctx));
-
-                    return LoadResult.Success(
-                        ctx.Header.LogicalEntityCount, warnings);
-                }
-                finally
-                {
-                    if (updateArray.IsCreated) updateArray.Dispose();
+                    case Stage.Planned:
+                        NotifyPhase(OperationPhase.P3_Generate);
+                        DoApply(ct);
+                        _stage = Stage.Done;
+                        NotifyPhase(OperationPhase.P8_Commit);
+                        return true;
                 }
             }
             catch (FormatException fe)
             {
-                return LoadResult.Failure(ErrorInfoMapper.Map(fe.Error));
+                _result = LoadResult.Failure(ErrorInfoMapper.Map(fe.Error));
+                _stage = Stage.Done;
+                return true;
             }
-            catch
+            catch (OperationCanceledException)
             {
-                return LoadResult.Failure(
-                    SaveLoadErrorCode.WorldModificationFailed);
+                _result = LoadResult.Failure(SaveLoadErrorCode.Cancelled);
+                _stage = Stage.Done;
+                return true;
             }
-            finally
+            catch (Exception ex)
             {
-                journal.Dispose();
+                UnityEngine.Debug.LogError(
+                    $"[ECSave] DeserializeOperation.MoveNext threw in {_stage}: {ex}");
+                _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+                _stage = Stage.Done;
+                return true;
+            }
 
-                if (updateTargets.IsCreated)
-                    updateTargets.Dispose();
+            return true;
+        }
+
+        private void NotifyPhase(OperationPhase phase)
+        {
+            if (phase == _lastNotifiedPhase) return;
+            _lastNotifiedPhase = phase;
+            _onPhaseChanged?.Invoke(phase);
+        }
+
+        private bool DoPrephase(CancellationToken ct)
+        {
+            _ctx = PrephaseContext.Create(_def, _world);
+            _ctxInitialized = true;
+
+            var err = D0_InputCopyPhase.Execute(ref _ctx, _data, _def, _world, ct);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D1_StructureValidationPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D2_ChecksumVerificationPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D3_VersionCheckPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D4_WorldIdCheckPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D5_SchemaMatchPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D6_MigrationPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D5_5_PrefabMigrationPhase.Execute(ref _ctx, out var prefabIdentities);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+            _ctx.PrefabIdentities = prefabIdentities;
+
+            err = D4_5_SubSceneMatchPhase.Execute(
+                _def.SubScene,
+                _ctx.SectionTable,
+                _ctx.View,
+                _ctx.Warnings,
+                out var subSceneState,
+                out _);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+            _ctx.SubSceneState = subSceneState;
+
+            err = D7_EntityRefValidationPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D8_RecordValidationPhase.Execute(ref _ctx);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = D8_5_TombstoneValidationPhase.Execute(ref _ctx, out var tombstoneEntries);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+            _ctx.TombstoneSections = tombstoneEntries;
+
+            return true;
+        }
+
+        private bool DoPlanAndBackup(CancellationToken ct)
+        {
+            var em = _world.EntityManager;
+
+            var err = P1_PlanPhase.Execute(ref _ctx, _policy);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            err = P1_5_SceneRestorePlanPhase.Execute(
+                _def.SubScene,
+                _ctx.SubSceneState,
+                out var restoreRequests);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+            _ctx.SubSceneRestoreRequests = restoreRequests;
+
+            _destroyTargets = new NativeList<Entity>(16, Allocator.Persistent);
+            _destroyTargetsCreated = true;
+
+            err = P1_DeletionPlanPhase.Execute(ref _ctx, _scope, _policy, _destroyTargets);
+            if (err != SaveLoadErrorCode.None) { _result = LoadResult.Failure(err); return false; }
+
+            if (_policy == DeletionPolicy.ByScope
+                && _scope.IsEntireWorld
+                && _destroyTargets.Length > 0)
+            {
+                _ctx.Warnings.Add(WarningRecord.Create(
+                    LoadWarningKind.ByScopeDeletionWarning,
+                    typeSectionId: 0,
+                    saveEntityIndex: -1,
+                    sourceEntity: Entity.Null,
+                    extraHash: (ulong)_destroyTargets.Length));
+            }
+
+            _updateTargets = new NativeList<Entity>(16, Allocator.Persistent);
+            _updateTargetsCreated = true;
+            for (int i = 0; i < _ctx.PersistentToEntity.Length; i++)
+            {
+                var e = _ctx.PersistentToEntity[i];
+                if (e != Entity.Null) _updateTargets.Add(e);
+            }
+
+            _updateArray = new NativeArray<Entity>(_updateTargets.Length, Allocator.Persistent);
+            _updateArrayCreated = true;
+            for (int i = 0; i < _updateTargets.Length; i++)
+                _updateArray[i] = _updateTargets[i];
+
+            _journal = new ApplyJournal(Allocator.Persistent);
+            _journal.Backup(_ctx.Definition, _updateArray, em);
+
+            return true;
+        }
+
+        private void DoApply(CancellationToken ct)
+        {
+            var em = _world.EntityManager;
+            bool success = false;
+            IReadOnlyList<SceneLoadInfo> sceneSnapshot = null;
+
+            try
+            {
+                try
+                {
+                    if (FaultInjector.ShouldFail("P3"))
+                        throw new InvalidOperationException("Injected P3");
+
+                    CreateEntitiesForNonChunkSections(ref _ctx, _journal, em);
+
+                    for (int i = 0; i < _ctx.SectionTable.Count; i++)
+                    {
+                        ref var entry = ref _ctx.SectionTable.Entries[i];
+                        if (entry.Kind != SectionKind.Identity) continue;
+
+                        var bodyView = SectionBodyHelper.GetSectionBody(_ctx, i);
+                        CreateEntitiesForSection(bodyView, _ctx.PersistentToEntity, _journal, em);
+                    }
+
+                    if (ct.IsCancellationRequested)
+                        throw new InvalidOperationException("Cancelled");
+
+                    if (FaultInjector.ShouldFail("P4"))
+                        throw new InvalidOperationException("Injected P4");
+
+                    var p72 = P7_2_FixedStringScanPhase.Execute(ref _ctx);
+                    if (p72 != SaveLoadErrorCode.None)
+                        throw new InvalidOperationException("P7.2 failed: " + p72);
+
+                    ApplyNonChunkModules(ref _ctx, em);
+                    ApplyIdentityModules(ref _ctx, em);
+
+                    if (P4_StructuralChangePhase.Execute(ref _ctx, _policy, em)
+                        != SaveLoadErrorCode.None)
+                        throw new InvalidOperationException("P4 removal failed");
+
+                    ApplyChunkModules(ref _ctx, em);
+
+                    if (P6_ChunkComponentRestorePhase.Execute(ref _ctx, em)
+                        != SaveLoadErrorCode.None)
+                        throw new InvalidOperationException("P6 failed");
+
+                    if (FaultInjector.ShouldFail("P5"))
+                        throw new InvalidOperationException("Injected P5");
+
+                    sceneSnapshot = CaptureSceneSnapshot(_def.SubScene);
+
+                    var p35 = P3_5_SceneRestoreExecutionPhase.Execute(
+                        _def.SubScene,
+                        _ctx.SubSceneRestoreRequests,
+                        ref _ctx.Warnings);
+                    if (p35 != SaveLoadErrorCode.None)
+                    {
+                        bool entityOk = _journal.Rollback(_updateArray, em);
+                        bool sceneOk = TryRollbackSceneState(
+                            sceneSnapshot,
+                            _ctx.SubSceneRestoreRequests,
+                            _def.SubScene,
+                            ref _ctx.Warnings);
+                        success = true;
+
+                        if (!entityOk || !sceneOk)
+                            _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+                        else
+                            _result = LoadResult.Failure(p35);
+                        return;
+                    }
+
+                    var p65 = P6_5_TombstoneApplyPhase.Execute(ref _ctx, em, _destroyTargets);
+                    if (p65 != SaveLoadErrorCode.None)
+                        throw new InvalidOperationException("P6.5 failed: " + p65);
+
+                    var p75 = P7_5_PrefabIdentityApplyPhase.Execute(ref _ctx, em);
+                    if (p75 != SaveLoadErrorCode.None)
+                        throw new InvalidOperationException("P7.5 failed: " + p75);
+
+                    if (FaultInjector.ShouldFail("P7"))
+                        throw new InvalidOperationException("Injected P7");
+
+                    if (_destroyTargets.IsCreated && _destroyTargets.Length > 0)
+                    {
+                        var validTargets = new NativeList<Entity>(_destroyTargets.Length, Allocator.Temp);
+                        try
+                        {
+                            for (int i = 0; i < _destroyTargets.Length; i++)
+                            {
+                                var e = _destroyTargets[i];
+                                if (e != Entity.Null && em.Exists(e))
+                                    validTargets.Add(e);
+                            }
+
+                            if (validTargets.Length > 0)
+                            {
+                                try
+                                {
+                                    em.DestroyEntity(validTargets.AsArray());
+                                }
+                                catch (Exception destroyEx)
+                                {
+                                    UnityEngine.Debug.LogError(
+                                        $"[ECSave] DestroyEntity failed; partial destruction may have occurred " +
+                                        $"({validTargets.Length} targets, journal rollback skipped): {destroyEx}");
+                                    success = true;
+                                    _result = LoadResult.Failure(
+                                        SaveLoadErrorCode.WorldModificationFailed,
+                                        entityCount: _ctx.Header.LogicalEntityCount);
+                                    return;
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            if (validTargets.IsCreated) validTargets.Dispose();
+                        }
+                    }
+
+                    success = true;
+                }
+                finally
+                {
+                    if (!success)
+                    {
+                        bool entityOk = _journal.Rollback(_updateArray, em);
+                        bool sceneOk = TryRollbackSceneState(
+                            sceneSnapshot,
+                            _ctx.SubSceneRestoreRequests,
+                            _def.SubScene,
+                            ref _ctx.Warnings);
+                        if (!entityOk || !sceneOk)
+                            throw new InvalidOperationException("Rollback failed");
+                    }
+                }
+
+                var warnings = new List<LoadWarning>();
+                _ctx.Warnings.ToLoadWarnings(warnings, BuildTypeNameMap(ref _ctx));
+
+                _result = LoadResult.Success(_ctx.Header.LogicalEntityCount, warnings);
+            }
+            catch (FormatException fe)
+            {
+                _result = LoadResult.Failure(ErrorInfoMapper.Map(fe.Error));
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is InvalidOperationException))
+                    UnityEngine.Debug.LogError($"[ECSave] DeserializeOperation.DoApply threw: {ex}");
+                _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
+            }
+        }
+
+        private static IReadOnlyList<SceneLoadInfo> CaptureSceneSnapshot(SubSceneDefinition def)
+        {
+            if (def == null) return null;
+            if (!def.WithSceneStateRollback) return null;
+            if (def.SceneStateProvider == null) return null;
+            if (def.SceneRestoreCallback == null) return null;
+
+            try
+            {
+                return def.SceneStateProvider() ?? Array.Empty<SceneLoadInfo>();
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[ECSave] Failed to capture scene snapshot: {ex}");
+                return null;
+            }
+        }
+
+        private static bool TryRollbackSceneState(
+            IReadOnlyList<SceneLoadInfo> snapshot,
+            SceneLoadRequest[] executedRequests,
+            SubSceneDefinition def,
+            ref WarningCollector warnings)
+        {
+            if (def == null || !def.WithSceneStateRollback) return true;
+            if (def.SceneRestoreCallback == null) return true;
+
+            try
+            {
+                IReadOnlyList<SceneLoadInfo> target = snapshot;
+                if (target == null && executedRequests != null && executedRequests.Length > 0)
+                {
+                    var inverse = new SceneLoadInfo[executedRequests.Length];
+                    for (int i = 0; i < executedRequests.Length; i++)
+                    {
+                        var r = executedRequests[i];
+                        var invState = r.TargetState == SceneLoadState.Loaded
+                            ? SceneLoadState.Unloaded
+                            : SceneLoadState.Loaded;
+                        inverse[i] = new SceneLoadInfo(r.Guid, invState, r.Mode, r.ContentHash);
+                    }
+                    target = inverse;
+                }
+
+                if (target == null || target.Count == 0) return true;
+
+                var current = new Dictionary<SceneGuid, SceneLoadState>();
+                if (def.SceneStateProvider != null)
+                {
+                    try
+                    {
+                        var cur = def.SceneStateProvider();
+                        if (cur != null)
+                        {
+                            for (int i = 0; i < cur.Count; i++)
+                                current[cur[i].Guid] = cur[i].State;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        UnityEngine.Debug.LogError(
+                            $"[ECSave] SceneStateProvider threw during rollback: {ex}");
+                    }
+                }
+
+                var restore = new List<SceneLoadRequest>();
+                for (int i = 0; i < target.Count; i++)
+                {
+                    var s = target[i];
+                    if (current.TryGetValue(s.Guid, out var curState) && curState == s.State) continue;
+                    restore.Add(new SceneLoadRequest(s.Guid, s.State, s.RestoreMode, s.ContentHash));
+                }
+
+                if (restore.Count == 0) return true;
+
+                var outcomes = def.SceneRestoreCallback(restore.ToArray());
+                if (outcomes == null) return true;
+
+                bool allOk = true;
+                int limit = Math.Min(outcomes.Length, restore.Count);
+                for (int i = 0; i < limit; i++)
+                {
+                    if (!outcomes[i].Success)
+                    {
+                        UnityEngine.Debug.LogWarning(
+                            $"[ECSave] Scene rollback failed for {restore[i].Guid}: {outcomes[i].FailureReason}");
+                        allOk = false;
+                    }
+                }
+
+                if (allOk)
+                {
+                    warnings.Add(WarningRecord.Create(
+                        LoadWarningKind.SceneStateRolledBack, 0, -1, Entity.Null));
+                }
+                return allOk;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[ECSave] Scene rollback threw: {ex}");
+                return false;
             }
         }
 
@@ -255,14 +522,11 @@ namespace ECSave.Internal
                 if (m.SectionKind == SectionKind.ChunkComponent) continue;
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                CreateEntitiesForSection(
-                    bodyView, ctx.PersistentToEntity, journal, em);
+                CreateEntitiesForSection(bodyView, ctx.PersistentToEntity, journal, em);
             }
         }
 
-        private static void ApplyNonChunkModules(
-            ref PrephaseContext ctx,
-            EntityManager em)
+        private static void ApplyNonChunkModules(ref PrephaseContext ctx, EntityManager em)
         {
             for (int i = 0; i < ctx.SectionTable.Count; i++)
             {
@@ -275,9 +539,7 @@ namespace ECSave.Internal
             }
         }
 
-        private static void ApplyIdentityModules(
-            ref PrephaseContext ctx,
-            EntityManager em)
+        private static void ApplyIdentityModules(ref PrephaseContext ctx, EntityManager em)
         {
             for (int i = 0; i < ctx.SectionTable.Count; i++)
             {
@@ -292,9 +554,7 @@ namespace ECSave.Internal
             }
         }
 
-        private static void ApplyChunkModules(
-            ref PrephaseContext ctx,
-            EntityManager em)
+        private static void ApplyChunkModules(ref PrephaseContext ctx, EntityManager em)
         {
             for (int i = 0; i < ctx.SectionTable.Count; i++)
             {
@@ -333,19 +593,58 @@ namespace ECSave.Internal
             }
         }
 
-        private static Dictionary<uint, string> BuildTypeNameMap(
-            ref PrephaseContext ctx)
+        private static unsafe Dictionary<uint, string> BuildTypeNameMap(ref PrephaseContext ctx)
         {
             var map = new Dictionary<uint, string>();
+            var table = ctx.SectionTable;
+            if (table.Entries == null) return map;
 
-            for (int i = 0; i < ctx.SectionTable.Count; i++)
+            for (int i = 0; i < table.Count; i++)
             {
-                var m = ctx.ModuleBySection[i];
+                var m = ctx.ModuleBySection != null ? ctx.ModuleBySection[i] : null;
                 if (m != null)
+                {
                     map[(uint)i] = m.FullTypeName;
+                    continue;
+                }
+
+                ref var entry = ref table.Entries[i];
+                if (entry.NameLength == 0) continue;
+                if (table.NameHeap == null) continue;
+
+                long nameStart = (long)entry.NameOffset;
+                long nameEnd = nameStart + entry.NameLength;
+                if (nameStart < 0 || nameEnd > table.NameHeapLength) continue;
+
+                try
+                {
+                    var name = System.Text.Encoding.UTF8.GetString(
+                        table.NameHeap + nameStart, entry.NameLength);
+                    if (!string.IsNullOrEmpty(name))
+                        map[(uint)i] = name;
+                }
+                catch
+                {
+                }
             }
 
             return map;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            if (_journal != null)
+            {
+                try { _journal.Dispose(); } catch { }
+                _journal = null;
+            }
+            if (_updateArrayCreated) { _updateArray.Dispose(); _updateArrayCreated = false; }
+            if (_updateTargetsCreated) { _updateTargets.Dispose(); _updateTargetsCreated = false; }
+            if (_destroyTargetsCreated) { _destroyTargets.Dispose(); _destroyTargetsCreated = false; }
+            if (_ctxInitialized) { _ctx.Dispose(); _ctxInitialized = false; }
         }
     }
 }

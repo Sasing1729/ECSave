@@ -1,8 +1,11 @@
-﻿using ECSave.Format;
+﻿using System;
+using ECSave.Format;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
+using Unity.Jobs;
 using FormatError = ECSave.Format.FormatError;
+using FormatException = ECSave.Format.FormatException;
 
 namespace ECSave.Internal
 {
@@ -32,7 +35,61 @@ namespace ECSave.Internal
         public abstract string[] FieldNames { get; }
         public abstract bool HasEnabledBits { get; }
 
+        public virtual FixedStringFieldInfo[] FixedStringFields
+            => Array.Empty<FixedStringFieldInfo>();
+
+        public virtual FixedListPathLeafFieldInfo[] FixedListPathLeaves
+            => Array.Empty<FixedListPathLeafFieldInfo>();
+
+        /// <summary>
+        /// このモジュールが「保存対象 Entity 集合（= _idOf）」の構築に寄与するか。
+        ///
+        /// <para>
+        /// <b>true</b>（デフォルト）: モジュールのクエリ結果に含まれる Entity は
+        /// 自動的に永続 ID が割り当てられ、保存対象になる。Component / Buffer /
+        /// Shared / Identity は通常こちら。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>false</b>: クエリ結果は保存対象にはならず、他のモジュール
+        /// （または <see cref="SelectionModule"/>）が既に永続 ID を割り当てた
+        /// Entity にのみ付与される。ChunkComponent はこちら。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>ChunkComponent が false である理由</b>: チャンクコンポーネントは
+        /// Entity 単位ではなくチャンク単位の属性であり、「チャンクコンポーネント
+        /// だけを持つ Entity」という概念が無い。チャンクに属する Entity は
+        /// 通常のコンポーネント（Health など）または識別型（PlayerId など）で
+        /// 既に保存対象になっている必要がある。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>副作用の例</b>: チャンクコンポーネントのみを持つ Entity は、
+        /// 他のモジュールが登録されていない限り保存対象にならない。
+        /// そのため、ロード後の World に該当 Entity が復元されない
+        /// （<see cref="SaveTypeModuleChunk{T}.FilterAfterIdOf"/> で
+        /// 該当グループが削除される）。
+        /// </para>
+        /// </summary>
         public virtual bool ContributesToIdOf => true;
+
+        public virtual bool SupportsAsyncCapture => false;
+
+        public virtual JobHandle ScheduleAsyncCapture(
+            EntityQuery query, EntityManager em, ref SnapshotBuffer buffer, JobHandle dependsOn)
+        {
+            Capture(query, em, ref buffer);
+            return dependsOn;
+        }
+
+        public virtual void CompleteAsyncCapture(EntityManager em, ref SnapshotBuffer buffer)
+        {
+        }
+
+        public virtual void CancelAsyncCapture()
+        {
+        }
 
         public abstract EntityQuery BuildQuery(EntityManager em);
         public abstract void Capture(EntityQuery query, EntityManager em, ref SnapshotBuffer buffer);
@@ -157,6 +214,42 @@ namespace ECSave.Internal
     public abstract class SaveTypeModulePlain<T> : SaveTypeModule<T>
         where T : unmanaged, IComponentData
     {
+        private NativeList<Entity> _asyncEntities;
+        private NativeList<T> _asyncValues;
+
+        public override bool SupportsAsyncCapture => true;
+
+        public override JobHandle ScheduleAsyncCapture(
+            EntityQuery query, EntityManager em, ref SnapshotBuffer buffer, JobHandle dependsOn)
+        {
+            CancelAsyncCapture();
+
+            _asyncEntities = query.ToEntityListAsync(Allocator.Persistent, out var h1);
+            _asyncValues = query.ToComponentDataListAsync<T>(Allocator.Persistent, out var h2);
+
+            return JobHandle.CombineDependencies(dependsOn, h1, h2);
+        }
+
+        public override void CompleteAsyncCapture(EntityManager em, ref SnapshotBuffer buffer)
+        {
+            if (!_asyncEntities.IsCreated) return;
+
+            try
+            {
+                buffer.BulkAppendPlain(_asyncEntities.AsArray(), _asyncValues.AsArray());
+            }
+            finally
+            {
+                CancelAsyncCapture();
+            }
+        }
+
+        public override void CancelAsyncCapture()
+        {
+            if (_asyncEntities.IsCreated) { _asyncEntities.Dispose(); _asyncEntities = default; }
+            if (_asyncValues.IsCreated) { _asyncValues.Dispose(); _asyncValues = default; }
+        }
+
         public override void Capture(
             EntityQuery query, EntityManager em, ref SnapshotBuffer buffer)
             => SnapshotCapture.CaptureChunksPlain<T>(query, em, ref buffer);
@@ -166,6 +259,61 @@ namespace ECSave.Internal
         where T : unmanaged, IComponentData, IEnableableComponent
     {
         public override bool HasEnabledBits => true;
+
+        private NativeList<Entity> _asyncEntities;
+        private NativeList<T> _asyncValues;
+
+        public override bool SupportsAsyncCapture => true;
+
+        public override JobHandle ScheduleAsyncCapture(
+            EntityQuery query, EntityManager em, ref SnapshotBuffer buffer, JobHandle dependsOn)
+        {
+            CancelAsyncCapture();
+
+            _asyncEntities = query.ToEntityListAsync(Allocator.Persistent, out var h1);
+            _asyncValues = query.ToComponentDataListAsync<T>(Allocator.Persistent, out var h2);
+
+            return JobHandle.CombineDependencies(dependsOn, h1, h2);
+        }
+
+        public unsafe override void CompleteAsyncCapture(EntityManager em, ref SnapshotBuffer buffer)
+        {
+            if (!_asyncEntities.IsCreated) return;
+
+            try
+            {
+                if (_asyncValues.Length != _asyncEntities.Length)
+                {
+                    for (int i = 0; i < _asyncEntities.Length; i++)
+                    {
+                        var e = _asyncEntities[i];
+                        var v = em.GetComponentData<T>(e);
+                        buffer.Append(e, (byte*)&v);
+                        if (HasEnabledBits)
+                            buffer.AppendEnabled(em.IsComponentEnabled<T>(e));
+                    }
+                    return;
+                }
+
+                buffer.BulkAppendPlain(_asyncEntities.AsArray(), _asyncValues.AsArray());
+
+                if (HasEnabledBits)
+                {
+                    for (int i = 0; i < _asyncEntities.Length; i++)
+                        buffer.AppendEnabled(em.IsComponentEnabled<T>(_asyncEntities[i]));
+                }
+            }
+            finally
+            {
+                CancelAsyncCapture();
+            }
+        }
+
+        public override void CancelAsyncCapture()
+        {
+            if (_asyncEntities.IsCreated) { _asyncEntities.Dispose(); _asyncEntities = default; }
+            if (_asyncValues.IsCreated) { _asyncValues.Dispose(); _asyncValues = default; }
+        }
 
         public override void Capture(EntityQuery query, EntityManager em, ref SnapshotBuffer buffer)
         {
@@ -187,6 +335,18 @@ namespace ECSave.Internal
     {
         public override SectionKind SectionKind => SectionKind.Buffer;
 
+        private NativeArray<ArchetypeChunk> _asyncChunks;
+        private NativeArray<int> _chunkStartIndices;
+        private NativeArray<Entity> _asyncEntities;
+        private NativeArray<int> _asyncElementCounts;
+        private NativeArray<int> _asyncByteOffsets;
+        private NativeArray<byte> _asyncOutput;
+        private EntityQuery _asyncQuery;
+
+        public override bool SupportsAsyncCapture => true;
+
+        protected NativeArray<Entity> AsyncEntities => _asyncEntities;
+
         public override void Capture(
             EntityQuery query, EntityManager em, ref SnapshotBuffer buffer)
         {
@@ -200,31 +360,150 @@ namespace ECSave.Internal
             EntityQuery query, EntityManager em, ref SnapshotBuffer buffer)
             => SnapshotCapture.CaptureChunksBuffer<T>(query, em, ref buffer);
 
-        private static void RequireVariableLength(in SnapshotBuffer buffer)
+        protected virtual JobHandle ScheduleCountJob(
+            BufferTypeHandle<T> bufferHandle, BufferAsyncContext ctx, JobHandle deps)
         {
-            if (!buffer.IsVariableLength)
-                throw new FormatException(FormatError.ValidationFailed,
-                    "Buffer module requires variable-length buffer");
+            return new BufferCountJob<T>
+            {
+                BufferHandle = bufferHandle,
+                EntityHandle = ctx.EntityManager.GetEntityTypeHandle(),
+                ChunkStartIndices = ctx.ChunkStartIndices,
+                Entities = ctx.Entities,
+                ElementCounts = ctx.ElementCounts,
+            }.ScheduleParallel(ctx.Query, deps);
         }
 
-        private static int TotalElements(in SnapshotBuffer buffer)
+        protected virtual JobHandle ScheduleCopyJob(
+            BufferTypeHandle<T> bufferHandle, BufferAsyncContext ctx, JobHandle deps)
         {
-            int total = 0;
-            for (int i = 0; i < buffer.Count; i++)
-                total += buffer.RecordLengths[i];
-            return total;
+            return new BufferCopyJob<T>
+            {
+                BufferHandle = bufferHandle,
+                ChunkStartIndices = ctx.ChunkStartIndices,
+                ByteOffsets = ctx.ByteOffsets,
+                Output = ctx.Output,
+                Stride = ctx.Stride,
+            }.ScheduleParallel(ctx.Query, deps);
+        }
+
+        public override JobHandle ScheduleAsyncCapture(
+            EntityQuery query, EntityManager em, ref SnapshotBuffer buffer, JobHandle dependsOn)
+        {
+            CancelAsyncCapture();
+
+            buffer.InitRecordLengths(Allocator.Persistent);
+
+            _asyncQuery = query;
+            _asyncChunks = query.ToArchetypeChunkArray(Allocator.Persistent);
+
+            int chunkCount = _asyncChunks.Length;
+            _chunkStartIndices = new NativeArray<int>(chunkCount, Allocator.Persistent);
+
+            int totalEntities = 0;
+            for (int i = 0; i < chunkCount; i++)
+            {
+                _chunkStartIndices[i] = totalEntities;
+                totalEntities += _asyncChunks[i].Count;
+            }
+
+            _asyncEntities = new NativeArray<Entity>(totalEntities, Allocator.Persistent);
+            _asyncElementCounts = new NativeArray<int>(totalEntities, Allocator.Persistent);
+
+            if (totalEntities == 0)
+                return dependsOn;
+
+            var bufferHandle = em.GetBufferTypeHandle<T>(true);
+            var ctx = new BufferAsyncContext
+            {
+                Query = query,
+                EntityManager = em,
+                ChunkStartIndices = _chunkStartIndices,
+                Entities = _asyncEntities,
+                ElementCounts = _asyncElementCounts,
+                ByteOffsets = default,
+                Output = default,
+                Stride = RawRecordStride,
+            };
+
+            return ScheduleCountJob(bufferHandle, ctx, dependsOn);
+        }
+
+        public override void CompleteAsyncCapture(EntityManager em, ref SnapshotBuffer buffer)
+        {
+            if (!_asyncChunks.IsCreated) return;
+
+            try
+            {
+                int entityCount = _asyncEntities.Length;
+                int stride = RawRecordStride;
+
+                _asyncByteOffsets = new NativeArray<int>(entityCount, Allocator.Persistent);
+
+                int totalBytes = 0;
+                for (int i = 0; i < entityCount; i++)
+                {
+                    _asyncByteOffsets[i] = totalBytes;
+                    totalBytes += _asyncElementCounts[i] * stride;
+                }
+
+                _asyncOutput = new NativeArray<byte>(totalBytes, Allocator.Persistent);
+
+                if (totalBytes > 0)
+                {
+                    var bufferHandle = em.GetBufferTypeHandle<T>(true);
+                    var ctx = new BufferAsyncContext
+                    {
+                        Query = _asyncQuery,
+                        EntityManager = em,
+                        ChunkStartIndices = _chunkStartIndices,
+                        Entities = _asyncEntities,
+                        ElementCounts = _asyncElementCounts,
+                        ByteOffsets = _asyncByteOffsets,
+                        Output = _asyncOutput,
+                        Stride = stride,
+                    };
+
+                    var pass2 = ScheduleCopyJob(bufferHandle, ctx, default);
+                    pass2.Complete();
+                }
+
+                buffer.BulkAppendVariable(_asyncEntities, _asyncElementCounts, _asyncOutput);
+
+                AppendEnabledStates(em, ref buffer);
+            }
+            finally
+            {
+                CancelAsyncCapture();
+            }
+        }
+
+        protected virtual void AppendEnabledStates(EntityManager em, ref SnapshotBuffer buffer) { }
+
+        public override void CancelAsyncCapture()
+        {
+            if (_asyncChunks.IsCreated) { _asyncChunks.Dispose(); _asyncChunks = default; }
+            if (_chunkStartIndices.IsCreated) { _chunkStartIndices.Dispose(); _chunkStartIndices = default; }
+            if (_asyncEntities.IsCreated) { _asyncEntities.Dispose(); _asyncEntities = default; }
+            if (_asyncElementCounts.IsCreated) { _asyncElementCounts.Dispose(); _asyncElementCounts = default; }
+            if (_asyncByteOffsets.IsCreated) { _asyncByteOffsets.Dispose(); _asyncByteOffsets = default; }
+            if (_asyncOutput.IsCreated) { _asyncOutput.Dispose(); _asyncOutput = default; }
         }
 
         public override int ComputeBodySize(in SnapshotBuffer buffer)
         {
-            RequireVariableLength(in buffer);
+            if (!buffer.IsVariableLength)
+                throw new FormatException(FormatError.ValidationFailed,
+                    "Buffer module requires variable-length buffer");
 
             int count = buffer.Count;
             long size = CommonSectionFormat.HeaderSize;
             size += (long)count * 4;
             size += (long)(count + 1) * 4;
             if (WritesEnabledBits(in buffer)) size += (count + 7) / 8;
-            size += (long)TotalElements(in buffer) * RecordStride;
+
+            int total = 0;
+            for (int i = 0; i < buffer.Count; i++) total += buffer.RecordLengths[i];
+            size += (long)total * RecordStride;
 
             if (size > int.MaxValue)
                 throw new FormatException(FormatError.ValidationFailed,
@@ -400,27 +679,6 @@ namespace ECSave.Internal
             }
         }
 
-        private unsafe void WriteBufferElements(
-            Entity target, EntityManager em, byte* src, int elementCount)
-        {
-            DynamicBuffer<T> buf;
-            if (em.HasComponent<T>(target))
-            {
-                buf = em.GetBuffer<T>(target, isReadOnly: false);
-                buf.Clear();
-            }
-            else
-            {
-                buf = em.AddBuffer<T>(target);
-            }
-
-            int dataStride = RecordStride;
-            for (int k = 0; k < elementCount; k++)
-                buf.Add(dataStride > 0
-                    ? ModuleBytes.Read<T>(src + k * dataStride, dataStride)
-                    : default);
-        }
-
         public override ModuleBackup BackupForRollback(
             NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
             => RollbackHelper.BackupBuffer<T>(
@@ -443,6 +701,21 @@ namespace ECSave.Internal
                 SnapshotCapture.CaptureChunksBufferEnableable<T>(query, em, ref buffer);
             else
                 SnapshotCapture.CaptureChunksBuffer<T>(query, em, ref buffer);
+        }
+
+        protected override void AppendEnabledStates(EntityManager em, ref SnapshotBuffer buffer)
+        {
+            if (!HasEnabledBits) return;
+            if (!buffer.HasEnabledStates) return;
+
+            var entities = AsyncEntities;
+            for (int i = 0; i < entities.Length; i++)
+            {
+                var e = entities[i];
+                if (e == Entity.Null) { buffer.AppendEnabled(true); continue; }
+                if (!em.Exists(e)) { buffer.AppendEnabled(true); continue; }
+                buffer.AppendEnabled(em.IsComponentEnabled<T>(e));
+            }
         }
 
         protected override bool ReadEnabled(Entity entity, EntityManager em)
@@ -499,8 +772,20 @@ namespace ECSave.Internal
     where T : unmanaged, IComponentData
     {
         public override int RawRecordStride => UnsafeUtility.SizeOf<T>();
-        public override int[] EntityRefOffsets => ModuleShared.EmptyInts;
-        public override int RecordStride => UnsafeUtility.SizeOf<T>();
+
+        // B-5: Chunk も Component/Buffer/Shared と同じ EntityRef パイプラインを通る。
+        // EntityRefOffsets は基底 SaveTypeModule で abstract 宣言されているため、
+        // 具象サブクラス（Source Generator 生成含む）が必ず override する。
+        // これにより RecordStride はデータレイアウト上の正しい stride を返す。
+        //
+        // 参考: SaveTypeModuleBase<T> は EmptyInts を override しているが、
+        // 本クラスは SaveTypeModule から直接派生するため、その恩恵は受けない。
+        // 「Entity を持たない Chunk 型」を登録する場合は、生成コード側で
+        // s_entityRefOffsets = Array.Empty<int>() を emit すること。
+
+        public override int RecordStride
+            => UnsafeUtility.SizeOf<T>() - 4 * EntityRefOffsets.Length;
+
         public override bool HasEnabledBits => false;
         public override SectionKind SectionKind => SectionKind.ChunkComponent;
         public override bool ContributesToIdOf => false;
@@ -602,7 +887,9 @@ namespace ECSave.Internal
             NativeParallelHashMap<Entity, int> idOf)
         {
             int groupCount = buffer.Entities.Length;
-            int stride = RecordStride;
+            int dataStride = RecordStride;
+            int rawStride = RawRecordStride;
+            var refs = EntityRefOffsets;
 
             using var memberOffset = new NativeArray<uint>(groupCount + 1, Allocator.TempJob);
             using var memberEntityIndex = new NativeArray<uint>(
@@ -617,13 +904,26 @@ namespace ECSave.Internal
             for (int i = 0; i < buffer.ChunkMemberEntities.Length; i++)
                 mei[i] = (uint)idOf[buffer.ChunkMemberEntities[i]];
 
-            byte* records = stride > 0 && groupCount > 0
-                ? (byte*)buffer.Values.GetUnsafeReadOnlyPtr()
-                : null;
+            ChunkComponentSectionWriter.WriteFixedHeader(
+                ref writer, (uint)groupCount, (uint)dataStride, mo,
+                buffer.ChunkMemberEntities.Length, mei);
 
-            ChunkComponentSectionWriter.WriteFixed(
-                ref writer, (uint)groupCount, (uint)stride, mo,
-                buffer.ChunkMemberEntities.Length, mei, records);
+            if (dataStride <= 0 || groupCount == 0) return;
+
+            byte* records = (byte*)buffer.Values.GetUnsafeReadOnlyPtr();
+
+            if (refs.Length == 0)
+            {
+                writer.WriteBytes(records, groupCount * dataStride);
+            }
+            else
+            {
+                for (int g = 0; g < groupCount; g++)
+                {
+                    EntityRefCodec.WriteRecordWithRefs(
+                        ref writer, records + g * rawStride, refs, rawStride, idOf);
+                }
+            }
         }
 
         public override unsafe void ApplySectionBody(
@@ -657,10 +957,8 @@ namespace ECSave.Internal
         {
         }
 
-        // ── Anchor-based rollback ────────────────────
-
         public override unsafe ModuleBackup BackupForRollback(
-    NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
+            NativeArray<Entity> updateTargets, EntityManager em, Allocator allocator)
         {
             int n = updateTargets.Length;
             int stride = UnsafeUtility.SizeOf<T>();
@@ -786,8 +1084,6 @@ namespace ECSave.Internal
             }
         }
 
-        // ── P6: restore chunks (with merged detection) ────
-
         public unsafe SaveLoadErrorCode RestoreChunks(
             in ChunkComponentSectionView view,
             int groupCount,
@@ -831,7 +1127,8 @@ namespace ECSave.Internal
 
                     return ApplyChunks(
                         view, groupCount, stride,
-                        entityIndexToGroup, entityToPid, em, ref merged);
+                        entityIndexToGroup, entityToPid,
+                        persistentToEntity, em, ref merged);
                 }
                 finally
                 {
@@ -850,6 +1147,7 @@ namespace ECSave.Internal
             int stride,
             NativeArray<int> entityIndexToGroup,
             NativeParallelHashMap<Entity, int> entityToPid,
+            NativeArray<Entity> persistentToEntity,
             EntityManager em,
             ref bool merged)
         {
@@ -865,6 +1163,11 @@ namespace ECSave.Internal
             }
 
             var scratchGroups = new NativeArray<int>(maxCapacity, Allocator.TempJob);
+
+            var refs = EntityRefOffsets;
+            int rawStride = RawRecordStride;
+            byte[] expanded = refs.Length > 0 ? new byte[rawStride] : null;
+
             try
             {
                 for (int c = 0; c < chunks.Length; c++)
@@ -893,9 +1196,26 @@ namespace ECSave.Internal
                     if (representative < 0 || representative * stride + stride > view.RecordsLength)
                         continue;
 
-                    em.SetChunkComponentData<T>(
-                        chunk,
-                        ModuleBytes.Read<T>(view.Records + representative * stride, stride));
+                    byte* src = view.Records + representative * stride;
+
+                    if (refs.Length == 0)
+                    {
+                        em.SetChunkComponentData<T>(
+                            chunk,
+                            ModuleBytes.Read<T>(src, rawStride));
+                    }
+                    else
+                    {
+                        fixed (byte* eptr = expanded)
+                        {
+                            EntityRefCodec.ExpandRecord(
+                                src, stride, refs, rawStride,
+                                persistentToEntity, eptr);
+                            em.SetChunkComponentData<T>(
+                                chunk,
+                                ModuleBytes.Read<T>(eptr, rawStride));
+                        }
+                    }
 
                     int distinctGroups = CountDistinct(scratchGroups, groupTotal);
                     bool hasNonMember = groupTotal < count;

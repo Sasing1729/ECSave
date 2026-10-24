@@ -45,13 +45,14 @@ namespace ECSave.Tests.Runtime.SubScene
         {
             var scenes = new SceneLoadInfo[]
             {
-                new SceneLoadInfo(new SceneGuid(1, 2), SceneLoadState.Loaded),
+        new SceneLoadInfo(new SceneGuid(1, 2), SceneLoadState.Loaded),
             };
             var r = S2_5_SubSceneCapturePhase.Execute(MakeDef(true, () => scenes));
 
             Assert.That(r.HasSection, Is.True);
             Assert.That(r.Scenes.Count, Is.EqualTo(1));
-            Assert.That(r.SectionBodySize, Is.EqualTo(SubSceneStateLayout.ComputeBodySize(1)));
+            // 修正: ComputeBodySize(scenes) に置換
+            Assert.That(r.SectionBodySize, Is.EqualTo(SubSceneStateLayout.ComputeBodySize(scenes)));
         }
 
         [Test]
@@ -61,7 +62,8 @@ namespace ECSave.Tests.Runtime.SubScene
 
             Assert.That(r.HasSection, Is.True);
             Assert.That(r.Scenes.Count, Is.EqualTo(0));
-            Assert.That(r.SectionBodySize, Is.EqualTo(SubSceneStateLayout.ComputeBodySize(0)));
+            // 修正: 空配列を渡すか HeaderSize 直接指定
+            Assert.That(r.SectionBodySize, Is.EqualTo(SubSceneStateLayout.HeaderSize));
         }
 
         [Test]

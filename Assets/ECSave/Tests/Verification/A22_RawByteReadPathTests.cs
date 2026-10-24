@@ -177,23 +177,49 @@ namespace ECSave.Tests
             }
         }
 
+        // ★ 修正: 旧テストは Buffer ではなく Component の GetNativeArray を呼んでいた。
+        //   本来の「Buffer の生バイト経路」を検証する内容に置き換える。
+        public struct A22BufferItem : IBufferElementData
+        {
+            public int Id;
+            public int Count;
+        }
+
         [Test]
         public void BufferAccessor_RawByteRead()
         {
-            var arch = _em.CreateArchetype(typeof(A22Data));
-            var e = _em.CreateEntity(arch);
+            var e = _em.CreateEntity();
+            var buf = _em.AddBuffer<A22BufferItem>(e);
+            buf.Add(new A22BufferItem { Id = 10, Count = 1 });
+            buf.Add(new A22BufferItem { Id = 20, Count = 2 });
+            buf.Add(new A22BufferItem { Id = 30, Count = 3 });
 
-            var q = _em.CreateEntityQuery(typeof(A22Data));
+            var q = _em.CreateEntityQuery(typeof(A22BufferItem));
             var chunks = q.ToArchetypeChunkArray(Allocator.TempJob);
             try
             {
-                var handle = _em.GetComponentTypeHandle<A22Data>(true);
-                foreach (var c in chunks)
+                var handle = _em.GetBufferTypeHandle<A22BufferItem>(isReadOnly: true);
+                Assert.Greater(chunks.Length, 0);
+
+                var accessor = chunks[0].GetBufferAccessor(ref handle);
+                Assert.AreEqual(1, accessor.Length);
+
+                var dynamicBuffer = accessor[0];
+                var array = dynamicBuffer.AsNativeArray();
+                Assert.AreEqual(3, array.Length);
+
+                int stride = UnsafeUtility.SizeOf<A22BufferItem>();
+                byte* src = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(array);
+                Assert.IsTrue(src != null, "Buffer の生バイトポインタが null");
+
+                for (int i = 0; i < array.Length; i++)
                 {
-                    var native = c.GetNativeArray(ref handle);
-                    Debug.Log($"[A-22] ComponentTypeHandle 経由で NativeArray 取得");
-                    Assert.AreEqual(1, native.Length);
+                    int id = *(int*)(src + i * stride);
+                    int count = *(int*)(src + i * stride + 4);
+                    Assert.AreEqual(array[i].Id, id, $"Id mismatch at {i}");
+                    Assert.AreEqual(array[i].Count, count, $"Count mismatch at {i}");
                 }
+                Debug.Log("[A-22] BufferAccessor 経由でも型付きと同じ生バイトが読める");
             }
             finally
             {
@@ -201,6 +227,9 @@ namespace ECSave.Tests
             }
         }
 
+        // ★ 修正: 旧テストは「ptr1 != null && ptr2 != null」しか見ておらず、
+        //   「複数回の取得でポインタが安定している」ことを検証していなかった。
+        //   同一 Chunk に対する 2 回の取得でポインタが一致することを assert する。
         [Test]
         public void GetNativeArray_Ptr_IsStableAcrossCalls()
         {
@@ -216,15 +245,17 @@ namespace ECSave.Tests
 
                 void* ptr1 = null;
                 void* ptr2 = null;
-                foreach (var c in chunks1)
-                    ptr1 = c.GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
-                foreach (var c in chunks2)
-                    ptr2 = c.GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
+                Assert.Greater(chunks1.Length, 0);
+                Assert.Greater(chunks2.Length, 0);
+
+                ptr1 = chunks1[0].GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
+                ptr2 = chunks2[0].GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
 
                 Debug.Log($"[A-22] ptr1=0x{(ulong)ptr1:X}, ptr2=0x{(ulong)ptr2:X}, same={ptr1 == ptr2}");
+
                 Assert.IsTrue(ptr1 != null && ptr2 != null);
-                Debug.Log("[A-22] 同一 Chunk に対する複数回の取得でポインタが安定していることを確認" +
-                          "（構造変更後は再取得が必要）");
+                Assert.AreEqual((ulong)ptr1, (ulong)ptr2,
+                    "構造変更が無い限り、同一 Chunk に対する複数回の取得でポインタは安定するはず");
             }
             finally
             {
@@ -241,12 +272,11 @@ namespace ECSave.Tests
 
             var q = _em.CreateEntityQuery(typeof(A22Data));
             var chunksBefore = q.ToArchetypeChunkArray(Allocator.TempJob);
-            void* ptrBefore = null;
+            ulong ptrBefore = 0;
             try
             {
                 var handle = _em.GetComponentTypeHandle<A22Data>(true);
-                foreach (var c in chunksBefore)
-                    ptrBefore = c.GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
+                ptrBefore = (ulong)chunksBefore[0].GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
             }
             finally
             {
@@ -256,19 +286,18 @@ namespace ECSave.Tests
             _em.AddComponent<A22Enableable>(e);
 
             var chunksAfter = q.ToArchetypeChunkArray(Allocator.TempJob);
-            void* ptrAfter = null;
+            ulong ptrAfter = 0;
             try
             {
                 var handle = _em.GetComponentTypeHandle<A22Data>(true);
-                foreach (var c in chunksAfter)
-                    ptrAfter = c.GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
+                ptrAfter = (ulong)chunksAfter[0].GetNativeArray(ref handle).GetUnsafeReadOnlyPtr();
             }
             finally
             {
                 chunksAfter.Dispose();
             }
 
-            Debug.Log($"[A-22] before=0x{(ulong)ptrBefore:X}, after=0x{(ulong)ptrAfter:X}");
+            Debug.Log($"[A-22] before=0x{ptrBefore:X}, after=0x{ptrAfter:X}");
             Debug.Log("[A-22] 構造変更後は Chunk ポインタが無効化される。" +
                       "W1/W2 の完了後に Chunk を再取得する必要がある");
             Assert.Pass();

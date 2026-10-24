@@ -16,6 +16,13 @@ namespace ECSave
         public MigrationTable Migrations { get; internal set; }
         public SubSceneDefinition SubScene { get; internal set; }
 
+        /// <summary>
+        /// ★ 追加: Deserialize 時に FixedString の切詰め疑いを検出したら
+        /// 文字境界まで自動修復するか。デフォルト true。
+        /// 無効化するには SaveDefinitionBuilderImpl.DisableAutoRepairFixedString() を使う。
+        /// </summary>
+        public bool AutoRepairFixedString { get; internal set; } = true;
+
         public SaveDefinition(
             IReadOnlyList<SaveTypeModule> modules,
             int gameDataVersion,

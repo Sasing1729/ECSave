@@ -1,5 +1,4 @@
-﻿// Runtime/Format/IO/ByteView.cs
-using System;
+﻿using System;
 using Unity.Collections;
 
 namespace ECSave.Format

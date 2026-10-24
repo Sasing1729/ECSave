@@ -61,8 +61,7 @@
             }
             else
             {
-                if (groupCount > 0)
-                    ValidateRecordOffset(recordOffset, groupCount, recordsLength);
+                ValidateRecordOffset(recordOffset, groupCount, recordsLength);
             }
 
             return new ChunkComponentSectionView
@@ -90,6 +89,8 @@
 
         private static unsafe void ValidateRecordOffset(uint* offsets, int groupCount, int available)
         {
+            if (offsets == null)
+                throw new FormatException(FormatError.CorruptedData, "RecordOffset is null");
             if (offsets[0] != 0)
                 throw new FormatException(FormatError.CorruptedData, "RecordOffset[0] must be 0");
             for (int i = 1; i <= groupCount; i++)

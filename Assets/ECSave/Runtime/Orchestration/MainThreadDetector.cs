@@ -1,20 +1,13 @@
-﻿// Runtime/Orchestration/MainThreadDetector.cs
-using System.Threading;
+﻿using System.Threading;
 using UnityEngine;
 
 namespace ECSave.Internal
 {
-    /// <summary>
-    /// メインスレッド判定（14.2節、A-11）。
-    /// ECS 内部は Worker からの EntityManager 操作を必ずしも拒否しないため、
-    /// ECSave が自前で判定する。
-    /// </summary>
     public static class MainThreadDetector
     {
         private static int _recordedMainThreadId;
         private static bool _recorded;
 
-        /// <summary>起動時に 1 回だけ記録する。SaveRuntimeSystem.OnCreate から呼ぶ。</summary>
         public static void RecordMainThreadId()
         {
             if (_recorded) return;
@@ -22,7 +15,6 @@ namespace ECSave.Internal
             _recorded = true;
         }
 
-        /// <summary>記録がまだ無い場合に、その場で記録する（フォールバック）。</summary>
         public static void EnsureRecorded()
         {
             if (!_recorded) RecordMainThreadId();
@@ -34,16 +26,28 @@ namespace ECSave.Internal
             return Thread.CurrentThread.ManagedThreadId == _recordedMainThreadId;
         }
 
-        /// <summary>公開 API の入口で呼ぶ。メインスレッドでなければ同期スロー（14.2節）。</summary>
         public static void ThrowIfNotMainThread()
         {
+            // 初回呼び出し時は「呼び出し元スレッドを main thread として記録」する。
+            // Unity の Awake/Start/Update は main thread で走るため、
+            // SaveSystem の初回呼び出し元は main thread であることが期待される。
+            // ここで自動記録しないと、SaveRuntimeSystem.OnCreate より前に
+            // SaveSystem を呼んだ場合に、main thread から呼んでいても例外が飛ぶ。
+            if (!_recorded)
+            {
+                RecordMainThreadId();
+                return;
+            }
+
             if (!IsMainThread())
+            {
                 throw new System.InvalidOperationException(
                     $"ECSave public API must be called from the main thread. " +
-                    $"Recorded={_recordedMainThreadId}, Current={Thread.CurrentThread.ManagedThreadId}");
+                    $"RecordedMainThreadId={_recordedMainThreadId}, " +
+                    $"CurrentThreadId={Thread.CurrentThread.ManagedThreadId}.");
+            }
         }
 
-        /// <summary>テスト用に記録をリセットする。プロダクションでは使わない。</summary>
         internal static void ResetForTests()
         {
             _recordedMainThreadId = 0;

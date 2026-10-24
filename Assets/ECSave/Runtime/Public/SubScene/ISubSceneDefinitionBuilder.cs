@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Unity.Entities;
 
 namespace ECSave
 {
@@ -15,5 +16,6 @@ namespace ECSave
 
         ISubSceneDefinitionBuilder WithSceneStateProvider(Func<IReadOnlyList<SceneLoadInfo>> provider);
         ISubSceneDefinitionBuilder WithSceneRestoreCallback(Func<SceneLoadRequest[], SceneLoadOutcome[]> restore);
+        ISubSceneDefinitionBuilder WithPrefabIdentityProvider(Func<Entity, PrefabIdentityInfo?> provider);
     }
 }

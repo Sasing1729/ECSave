@@ -47,6 +47,7 @@ namespace ECSave.Tests.Runtime.SubScene
                 ContentVerificationMode.None,
                 StreamingConsistencyMode.TimeBased,
                 0, null, null,
+                null,
                 handlers,
                 Array.Empty<PrefabMigrationStepBase>());
         }

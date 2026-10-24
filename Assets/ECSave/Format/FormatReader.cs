@@ -123,6 +123,16 @@ namespace ECSave.Format
             if (!e.HasTypeDescriptor)
                 throw new FormatException(FormatError.CorruptedData, $"section {sectionIndex} has no type descriptor");
 
+            // ReadSectionTable で e.Offset + e.Length <= TotalLength を検証済み。
+            // TotalLength は ulong だが _view.Length(int) と一致することが ReadHeader で保証される。
+            // それでも int キャストの安全性を明示するため、防衛的に再チェックする。
+            if (e.Offset > int.MaxValue)
+                throw new FormatException(FormatError.CorruptedData,
+                    $"section {sectionIndex} Offset exceeds int.MaxValue: {e.Offset}");
+            if (e.Length > int.MaxValue)
+                throw new FormatException(FormatError.CorruptedData,
+                    $"section {sectionIndex} Length exceeds int.MaxValue: {e.Length}");
+
             long secStart = (long)e.Offset;
             if (secStart + 4 > _view.Length)
                 throw new FormatException(FormatError.CorruptedData, "type descriptor length out of range");

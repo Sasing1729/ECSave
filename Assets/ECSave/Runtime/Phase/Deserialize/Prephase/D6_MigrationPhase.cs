@@ -6,6 +6,9 @@ namespace ECSave.Internal
 {
     internal static unsafe class D6_MigrationPhase
     {
+        private const int MaxMigrationChainLength = 32;
+        private const int MaxScratchRecordSize = ECSaveFormatConstants.MaxStructSize;
+
         public static SaveLoadErrorCode Execute(ref PrephaseContext ctx)
         {
             bool need = false;
@@ -26,22 +29,33 @@ namespace ECSave.Internal
         private static SaveLoadErrorCode Migrate(ref PrephaseContext ctx, MigrationTable table)
         {
             int n = ctx.SectionTable.Count;
-            var steps = new MigrationStepBase[n];
+            var stepChains = new MigrationStepBase[n][];
             var newStrides = new int[n];
+            var sectionKinds = new SectionKind[n];
 
             for (int i = 0; i < n; i++)
             {
                 var m = ctx.ModuleBySection[i];
                 if (m == null) continue;
                 ref var e = ref ctx.SectionTable.Entries[i];
+                sectionKinds[i] = e.Kind;
                 if (e.SchemaHash == m.SchemaHash) continue;
 
                 ulong nameHash = SchemaHashCore.HashUtf8(m.FullTypeName);
-                var step = table.Resolve(nameHash, e.SchemaHash);
-                if (step == null || step.NewSchemaHash != m.SchemaHash)
+                var chain = ResolveChain(table, nameHash, e.SchemaHash, m.SchemaHash);
+                if (chain == null || chain.Length == 0)
                     return SaveLoadErrorCode.SchemaMismatch;
 
-                steps[i] = step;
+                if (chain.Length > 1)
+                {
+                    for (int s = 0; s < chain.Length; s++)
+                    {
+                        if (chain[s].NewRecordStride <= 0)
+                            return SaveLoadErrorCode.MigrationFailed;
+                    }
+                }
+
+                stepChains[i] = chain;
                 newStrides[i] = m.RecordStride;
             }
 
@@ -59,19 +73,16 @@ namespace ECSave.Internal
                 oldLen[i] = (int)e.Length;
                 tdSizes[i] = (int)(*(uint*)(ctx.View.Pointer + oldOff[i]));
 
-                if (steps[i] == null)
+                if (stepChains[i] == null)
                     newBodySize[i] = oldLen[i] - tdSizes[i];
                 else
                 {
-                    var r = new ByteReader(new ByteView(
-                        ctx.View.Pointer + oldOff[i] + tdSizes[i],
-                        oldLen[i] - tdSizes[i]));
-                    var h = CommonSectionFormat.ReadHeader(ref r);
-                    int cnt = (int)h.Count;
-                    bool he = (h.Flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
-                    long sz = 12 + 4L * cnt + (long)cnt * newStrides[i];
-                    if (he) sz += (cnt + 7) / 8;
-                    newBodySize[i] = (int)sz;
+                    byte* oldBody = ctx.View.Pointer + oldOff[i] + tdSizes[i];
+                    int oldBodyLen = oldLen[i] - tdSizes[i];
+                    int computed = ComputeMigratedBodySize(
+                        oldBody, oldBodyLen, newStrides[i], sectionKinds[i]);
+                    if (computed < 0) return SaveLoadErrorCode.MigrationFailed;
+                    newBodySize[i] = computed;
                 }
 
                 newLen[i] = tdSizes[i] + newBodySize[i];
@@ -107,7 +118,15 @@ namespace ECSave.Internal
                 var ne = e;
                 ne.Offset = (ulong)newOff[i];
                 ne.Length = (ulong)newLen[i];
-                if (steps[i] != null) ne.SchemaHash = ctx.ModuleBySection[i].SchemaHash;
+                if (stepChains[i] != null)
+                {
+                    var m = ctx.ModuleBySection[i];
+                    ne.SchemaHash = m.SchemaHash;
+                    // 移行後は旧名（RenamedFrom）ではなく現在の型名で解決できるよう、
+                    // NameHash も新名で更新する。これを怠ると、移行済みデータを
+                    // RenamedFrom 定義のない別バージョンで読んだ際に解決不能になる。
+                    ne.NameHash = SchemaHashCore.HashUtf8(m.FullTypeName);
+                }
 
                 var w = new FormatWriter(
                     p + tableOffset + i * ECSaveFormatConstants.SectionEntrySize,
@@ -115,30 +134,50 @@ namespace ECSave.Internal
                 w.WriteSectionEntry(ne);
             }
 
+            bool needScratch = false;
             for (int i = 0; i < n; i++)
+                if (stepChains[i] != null && stepChains[i].Length > 1) { needScratch = true; break; }
+
+            NativeArray<byte> scratch = default;
+            if (needScratch)
+                scratch = new NativeArray<byte>(MaxScratchRecordSize * 2, Allocator.TempJob);
+
+            try
             {
-                UnsafeUtility.MemCpy(p + newOff[i], old + oldOff[i], tdSizes[i]);
+                byte* scratchPtr = needScratch ? (byte*)scratch.GetUnsafePtr() : null;
 
-                if (steps[i] == null)
-                    UnsafeUtility.MemCpy(
-                        p + newOff[i] + tdSizes[i],
-                        old + oldOff[i] + tdSizes[i],
-                        newBodySize[i]);
-                else
+                for (int i = 0; i < n; i++)
                 {
-                    var err = MigrateBody(
-                        old + oldOff[i] + tdSizes[i], oldLen[i] - tdSizes[i],
-                        p + newOff[i] + tdSizes[i], newStrides[i], steps[i]);
-                    if (err != SaveLoadErrorCode.None)
-                    {
-                        newData.Dispose();
-                        return err;
-                    }
-                }
+                    UnsafeUtility.MemCpy(p + newOff[i], old + oldOff[i], tdSizes[i]);
 
-                int end = newOff[i] + newLen[i];
-                int next = i + 1 < n ? newOff[i + 1] : footerOff;
-                for (int k = end; k < next; k++) p[k] = 0;
+                    if (stepChains[i] == null)
+                    {
+                        UnsafeUtility.MemCpy(
+                            p + newOff[i] + tdSizes[i],
+                            old + oldOff[i] + tdSizes[i],
+                            newBodySize[i]);
+                    }
+                    else
+                    {
+                        var err = ApplyMigration(
+                            old + oldOff[i] + tdSizes[i], oldLen[i] - tdSizes[i],
+                            p + newOff[i] + tdSizes[i], newBodySize[i],
+                            newStrides[i], stepChains[i], sectionKinds[i], scratchPtr);
+                        if (err != SaveLoadErrorCode.None)
+                        {
+                            newData.Dispose();
+                            return err;
+                        }
+                    }
+
+                    int end = newOff[i] + newLen[i];
+                    int next = i + 1 < n ? newOff[i + 1] : footerOff;
+                    for (int k = end; k < next; k++) p[k] = 0;
+                }
+            }
+            finally
+            {
+                if (scratch.IsCreated) scratch.Dispose();
             }
 
             ulong ck = ChecksumCalculator.Compute(new ByteView(p, footerOff));
@@ -155,54 +194,322 @@ namespace ECSave.Internal
             return SaveLoadErrorCode.None;
         }
 
-        private static SaveLoadErrorCode MigrateBody(
-            byte* src, int srcLen, byte* dst, int newStride, MigrationStepBase step)
+        private static MigrationStepBase[] ResolveChain(
+            MigrationTable table, ulong nameHash, ulong oldHash, ulong targetHash)
         {
-            var r = new ByteReader(new ByteView(src, srcLen));
+            if (oldHash == targetHash) return System.Array.Empty<MigrationStepBase>();
+
+            var chain = new System.Collections.Generic.List<MigrationStepBase>();
+            ulong current = oldHash;
+
+            for (int i = 0; i < MaxMigrationChainLength; i++)
+            {
+                var step = table.Resolve(nameHash, current);
+                if (step == null) return null;
+                chain.Add(step);
+                current = step.NewSchemaHash;
+                if (current == targetHash) return chain.ToArray();
+            }
+            return null;
+        }
+
+        private static int ComputeMigratedBodySize(
+            byte* oldBody, int oldBodyLen, int newStride, SectionKind kind)
+        {
+            switch (kind)
+            {
+                case SectionKind.Component:
+                case SectionKind.Shared:
+                case SectionKind.Identity:
+                    return ComputeFixedBodySize(oldBody, oldBodyLen, newStride);
+                case SectionKind.Buffer:
+                    return ComputeBufferBodySize(oldBody, oldBodyLen, newStride);
+                case SectionKind.ChunkComponent:
+                    return ComputeChunkBodySize(oldBody, oldBodyLen, newStride);
+                default:
+                    return -1;
+            }
+        }
+
+        private static int ComputeFixedBodySize(byte* oldBody, int oldBodyLen, int newStride)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
             uint cnt = r.ReadU32();
             uint flags = r.ReadU32();
-            uint oldStride = r.ReadU32();
+            r.ReadU32();
+            int count = (int)cnt;
+            bool he = (flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
+            long sz = 12L + 4L * count + (long)count * newStride;
+            if (he) sz += (cnt + 7) / 8;
+            return sz > int.MaxValue ? -1 : (int)sz;
+        }
+
+        private static int ComputeBufferBodySize(byte* oldBody, int oldBodyLen, int newStride)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
+            uint cnt = r.ReadU32();
+            uint flags = r.ReadU32();
+            int oldStride = (int)r.ReadU32();
             int count = (int)cnt;
             bool he = (flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
 
-            int eiOff = r.Offset;
-            int eiSz = count * 4;
-            int ebOff = eiOff + eiSz;
-            int ebSz = he ? (count + 7) / 8 : 0;
-            int recOff = ebOff + ebSz;
+            r.Skip(count * 4);
+            var roView = r.PeekView((count + 1) * 4);
+            uint lastOff = ((uint*)roView.Pointer)[count];
+            r.Skip((count + 1) * 4);
 
-            var w = new FormatWriter(dst, 12 + eiSz + ebSz + count * newStride);
+            int totalElements = oldStride > 0 ? (int)(lastOff / (uint)oldStride) : 0;
+            long sz = 12L + 4L * count + 4L * (count + 1) + (long)totalElements * newStride;
+            if (he) sz += (cnt + 7) / 8;
+            return sz > int.MaxValue ? -1 : (int)sz;
+        }
+
+        private static int ComputeChunkBodySize(byte* oldBody, int oldBodyLen, int newStride)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
+            uint gc = r.ReadU32();
+            uint flags = r.ReadU32();
+            r.ReadU32();
+            int groupCount = (int)gc;
+            bool isFixed = (flags & ECSaveFormatConstants.SectionFlags_FixedLength) != 0;
+
+            // 可変長 ChunkComponent は未対応（現実装は常に固定長を出力）
+            if (!isFixed) return -1;
+
+            int moBytes = (groupCount + 1) * 4;
+            var moView = r.PeekView(moBytes);
+            uint memberCount = ((uint*)moView.Pointer)[groupCount];
+            r.Skip(moBytes);
+            r.Skip((int)memberCount * 4);
+
+            long sz = 12L + moBytes + (long)memberCount * 4 + (long)groupCount * newStride;
+            return sz > int.MaxValue ? -1 : (int)sz;
+        }
+
+        private static SaveLoadErrorCode ApplyMigration(
+            byte* oldBody, int oldBodyLen, byte* newBody, int newBodyLen,
+            int newStride, MigrationStepBase[] chain, SectionKind kind, byte* scratch)
+        {
+            switch (kind)
+            {
+                case SectionKind.Component:
+                case SectionKind.Shared:
+                case SectionKind.Identity:
+                    return ApplyFixedMigration(oldBody, oldBodyLen, newBody, newBodyLen, newStride, chain, scratch);
+                case SectionKind.Buffer:
+                    return ApplyBufferMigration(oldBody, oldBodyLen, newBody, newBodyLen, newStride, chain, scratch);
+                case SectionKind.ChunkComponent:
+                    return ApplyChunkMigration(oldBody, oldBodyLen, newBody, newBodyLen, newStride, chain, scratch);
+                default:
+                    return SaveLoadErrorCode.MigrationFailed;
+            }
+        }
+
+        private static SaveLoadErrorCode ApplyFixedMigration(
+            byte* oldBody, int oldBodyLen, byte* newBody, int newBodyLen,
+            int newStride, MigrationStepBase[] chain, byte* scratch)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
+            uint cnt = r.ReadU32();
+            uint flags = r.ReadU32();
+            int oldStride = (int)r.ReadU32();
+            int count = (int)cnt;
+            bool he = (flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
+
+            var w = new ByteWriter(newBody, newBodyLen);
             w.WriteU32(cnt);
             w.WriteU32(flags);
             w.WriteU32((uint)newStride);
 
-            if (eiSz > 0)
+            int eiBytes = count * 4;
+            if (eiBytes > 0)
             {
-                UnsafeUtility.MemCpy(dst + w.Offset, src + eiOff, eiSz);
-                w.Seek(w.Offset + eiSz);
-            }
-            if (ebSz > 0)
-            {
-                UnsafeUtility.MemCpy(dst + w.Offset, src + ebOff, ebSz);
-                w.Seek(w.Offset + ebSz);
+                var eiView = r.ConsumeView(eiBytes);
+                w.WriteBytes(eiView.Pointer, eiBytes);
             }
 
-            if (newStride <= 0 || cnt == 0)
-                return SaveLoadErrorCode.None;
+            if (he)
+            {
+                int ebBytes = (count + 7) / 8;
+                if (ebBytes > 0)
+                {
+                    var ebView = r.ConsumeView(ebBytes);
+                    w.WriteBytes(ebView.Pointer, ebBytes);
+                }
+            }
 
-            byte* dstRec = dst + w.Offset;
+            if (count == 0) return SaveLoadErrorCode.None;
+
+            byte* oldRecs = oldStride > 0 ? r.ReadBytesPtr(count * oldStride) : null;
 
             for (int i = 0; i < count; i++)
             {
-                byte* oldRec = src + recOff + i * (int)oldStride;
-                byte* newRec = dstRec + i * newStride;
-
-                var rr = new ByteReader(new ByteView(oldRec, (int)oldStride));
-                var ww = new ByteWriter(newRec, newStride);
-
-                try { step.Migrate(ref rr, ref ww); }
-                catch { return SaveLoadErrorCode.MigrationFailed; }
+                byte* oldRec = oldRecs != null ? oldRecs + i * oldStride : null;
+                byte* newRec = newBody + w.Offset;
+                var err = ApplyChain(oldRec, oldStride, newRec, newStride, chain, scratch);
+                if (err != SaveLoadErrorCode.None) return err;
+                w.Skip(newStride);
             }
+
+            return SaveLoadErrorCode.None;
+        }
+
+        private static SaveLoadErrorCode ApplyBufferMigration(
+            byte* oldBody, int oldBodyLen, byte* newBody, int newBodyLen,
+            int newStride, MigrationStepBase[] chain, byte* scratch)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
+            uint cnt = r.ReadU32();
+            uint flags = r.ReadU32();
+            int oldStride = (int)r.ReadU32();
+            int count = (int)cnt;
+            bool he = (flags & ECSaveFormatConstants.SectionFlags_HasEnabledBits) != 0;
+
+            var eiView = count > 0 ? r.ConsumeView(count * 4) : default;
+
+            var oldRoView = r.ConsumeView((count + 1) * 4);
+            uint* oldRo = (uint*)oldRoView.Pointer;
+
+            byte* ebPtr = null;
+            int ebBytes = he ? (count + 7) / 8 : 0;
+            if (ebBytes > 0) ebPtr = r.ReadBytesPtr(ebBytes);
+
+            int oldRecBytes = (int)oldRo[count];
+            byte* oldRecs = oldRecBytes > 0 ? r.ReadBytesPtr(oldRecBytes) : null;
+
+            var w = new ByteWriter(newBody, newBodyLen);
+            w.WriteU32(cnt);
+            w.WriteU32(flags);
+            w.WriteU32((uint)newStride);
+
+            if (count > 0)
+                w.WriteBytes(eiView.Pointer, count * 4);
+
+            uint accum = 0;
+            w.WriteU32(0);
+            for (int i = 0; i < count; i++)
+            {
+                int elementCount = oldStride > 0
+                    ? (int)((oldRo[i + 1] - oldRo[i]) / (uint)oldStride)
+                    : 0;
+                accum += (uint)(elementCount * newStride);
+                w.WriteU32(accum);
+            }
+
+            if (ebBytes > 0) w.WriteBytes(ebPtr, ebBytes);
+
+            for (int i = 0; i < count; i++)
+            {
+                int elementCount = oldStride > 0
+                    ? (int)((oldRo[i + 1] - oldRo[i]) / (uint)oldStride)
+                    : 0;
+
+                for (int k = 0; k < elementCount; k++)
+                {
+                    byte* src = oldRecs != null ? oldRecs + oldRo[i] + k * oldStride : null;
+                    byte* dst = newBody + w.Offset;
+                    var err = ApplyChain(src, oldStride, dst, newStride, chain, scratch);
+                    if (err != SaveLoadErrorCode.None) return err;
+                    w.Skip(newStride);
+                }
+            }
+
+            return SaveLoadErrorCode.None;
+        }
+
+        private static SaveLoadErrorCode ApplyChunkMigration(
+            byte* oldBody, int oldBodyLen, byte* newBody, int newBodyLen,
+            int newStride, MigrationStepBase[] chain, byte* scratch)
+        {
+            var r = new ByteReader(new ByteView(oldBody, oldBodyLen));
+            uint gc = r.ReadU32();
+            uint flags = r.ReadU32();
+            int oldStride = (int)r.ReadU32();
+            int groupCount = (int)gc;
+            bool isFixed = (flags & ECSaveFormatConstants.SectionFlags_FixedLength) != 0;
+
+            if (!isFixed) return SaveLoadErrorCode.MigrationFailed;
+
+            int moBytes = (groupCount + 1) * 4;
+            var moView = r.ConsumeView(moBytes);
+            uint* mo = (uint*)moView.Pointer;
+            uint memberCount = mo[groupCount];
+
+            int meiBytes = (int)memberCount * 4;
+            var meiView = meiBytes > 0 ? r.ConsumeView(meiBytes) : default;
+
+            byte* oldRecs = groupCount > 0 ? r.ReadBytesPtr(groupCount * oldStride) : null;
+
+            var w = new ByteWriter(newBody, newBodyLen);
+            w.WriteU32(gc);
+            w.WriteU32(flags);
+            w.WriteU32((uint)newStride);
+            w.WriteBytes(moView.Pointer, moBytes);
+            if (meiBytes > 0) w.WriteBytes(meiView.Pointer, meiBytes);
+
+            for (int g = 0; g < groupCount; g++)
+            {
+                byte* src = oldRecs != null ? oldRecs + g * oldStride : null;
+                byte* dst = newBody + w.Offset;
+                var err = ApplyChain(src, oldStride, dst, newStride, chain, scratch);
+                if (err != SaveLoadErrorCode.None) return err;
+                w.Skip(newStride);
+            }
+
+            return SaveLoadErrorCode.None;
+        }
+
+        private static SaveLoadErrorCode ApplyChain(
+            byte* src, int srcLen, byte* dst, int dstLen, MigrationStepBase[] chain, byte* scratch)
+        {
+            if (chain == null || chain.Length == 0)
+                return SaveLoadErrorCode.MigrationFailed;
+
+            if (chain.Length == 1)
+            {
+                var r = new ByteReader(new ByteView(src, srcLen));
+                var w = new ByteWriter(dst, dstLen);
+                try { chain[0].Migrate(ref r, ref w); }
+                catch { return SaveLoadErrorCode.MigrationFailed; }
+                if (w.Offset != dstLen) return SaveLoadErrorCode.MigrationFailed;
+                return SaveLoadErrorCode.None;
+            }
+
+            if (scratch == null) return SaveLoadErrorCode.MigrationFailed;
+
+            byte* ping = scratch;
+            byte* pong = scratch + MaxScratchRecordSize;
+
+            byte* currentIn = src;
+            int currentInLen = srcLen;
+            byte* currentOut = ping;
+            int currentOutLen = chain[0].NewRecordStride;
+
+            for (int i = 0; i < chain.Length; i++)
+            {
+                if (currentOutLen <= 0 || currentOutLen > MaxScratchRecordSize)
+                    return SaveLoadErrorCode.MigrationFailed;
+
+                var rr = new ByteReader(new ByteView(currentIn, currentInLen));
+                var ww = new ByteWriter(currentOut, currentOutLen);
+                try { chain[i].Migrate(ref rr, ref ww); }
+                catch { return SaveLoadErrorCode.MigrationFailed; }
+
+                if (ww.Offset != currentOutLen) return SaveLoadErrorCode.MigrationFailed;
+
+                if (i < chain.Length - 1)
+                {
+                    currentIn = currentOut;
+                    currentInLen = currentOutLen;
+                    currentOut = (currentOut == ping) ? pong : ping;
+                    currentOutLen = chain[i + 1].NewRecordStride;
+                }
+            }
+
+            if (currentOutLen != dstLen) return SaveLoadErrorCode.MigrationFailed;
+
+            for (int b = 0; b < dstLen; b++)
+                dst[b] = currentOut[b];
 
             return SaveLoadErrorCode.None;
         }

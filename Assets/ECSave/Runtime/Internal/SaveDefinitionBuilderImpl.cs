@@ -12,11 +12,13 @@ namespace ECSave
         private readonly List<IdentityModule> _identities = new();
         private readonly List<SelectionModule> _selections = new();
         private readonly List<MigrationStepBase> _migrations = new();
+        private readonly List<PendingMigration> _pendingMigrations = new();
         private readonly Dictionary<string, string> _renamedFrom = new();
         private readonly List<string> _warnings = new();
 
         private int _gameDataVersion = 1;
         private string _worldId = "";
+        private bool _autoRepairFixedString = true;
 
         public IReadOnlyList<string> Warnings => _warnings;
 
@@ -36,8 +38,35 @@ namespace ECSave
 
         public void RegisterMigration<TMigration>() where TMigration : class, new()
         {
-            if (new TMigration() is MigrationStepBase step)
-                _migrations.Add(step);
+            var type = typeof(TMigration);
+
+            if (typeof(MigrationStepBase).IsAssignableFrom(type))
+            {
+                _migrations.Add((MigrationStepBase)Activator.CreateInstance(type));
+                return;
+            }
+
+            var newType = ExtractNewTypeArgument(type);
+            if (newType != null)
+            {
+                for (int i = 0; i < _pendingMigrations.Count; i++)
+                {
+                    if (_pendingMigrations[i].MigrationType == type)
+                        return;
+                }
+
+                var newTypeName = (newType.FullName ?? newType.Name).Replace('+', '.');
+                _pendingMigrations.Add(new PendingMigration
+                {
+                    MigrationType = type,
+                    NewTypeName = newTypeName,
+                });
+                return;
+            }
+
+            throw new SaveRegistrationException(
+                "ECSAVE-R008",
+                $"RegisterMigration<{type.FullName}> must derive from MigrationStepBase or implement IComponentMigration<TOld, TNew>.");
         }
 
         public void SelectEntityReference<T>(Func<T, Entity> field) where T : unmanaged, IComponentData { }
@@ -56,6 +85,11 @@ namespace ECSave
             _worldId = id ?? string.Empty;
         }
 
+        public void DisableAutoRepairFixedString()
+        {
+            _autoRepairFixedString = false;
+        }
+
         public void RegisterModule(SaveTypeModule module)
         {
             if (module == null) throw new ArgumentNullException(nameof(module));
@@ -63,10 +97,7 @@ namespace ECSave
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Module already registered: {module.FullTypeName}");
 
-            // === 修正：RegistrationId をモジュール配列のインデックスに設定 ===
             module.RegistrationId = _modules.Count;
-            // === ここまで ===
-
             _modules.Add(module);
         }
 
@@ -77,10 +108,7 @@ namespace ECSave
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Identity module already registered: {module.FullTypeName}");
 
-            // === 修正 ===
             module.RegistrationId = _identities.Count;
-            // === ここまで ===
-
             _identities.Add(module);
         }
 
@@ -91,10 +119,7 @@ namespace ECSave
                 throw new SaveRegistrationException("ECSAVE-R001",
                     $"Selection module already registered: {module.FullTypeName}.{module.FieldPath}");
 
-            // === 修正 ===
             module.RegistrationId = _selections.Count;
-            // === ここまで ===
-
             _selections.Add(module);
         }
 
@@ -102,6 +127,15 @@ namespace ECSave
         {
             if (step == null) throw new ArgumentNullException(nameof(step));
             _migrations.Add(step);
+
+            var stepName = NormalizeTypeName(step.NewTypeName);
+            if (stepName == null) return;
+
+            for (int i = _pendingMigrations.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(_pendingMigrations[i].NewTypeName, stepName, StringComparison.Ordinal))
+                    _pendingMigrations.RemoveAt(i);
+            }
         }
 
         internal void RecordWithoutEnableable(Type t) { }
@@ -111,30 +145,54 @@ namespace ECSave
 
         internal void RecordRenamedFrom(Type t, string oldName)
         {
-            string newName = t.FullName.Replace('+', '.');
+            if (string.IsNullOrEmpty(oldName))
+                throw new SaveRegistrationException("ECSAVE-R005",
+                    "RenamedFrom requires a non-empty old name");
 
-            if (oldName == newName)
+            // oldName は呼び出し側が与える文字列であり、"A.B+Inner"（リフレクション形式）と
+            // "A.B.Inner"（Roslyn 形式）の双方が渡され得る。Source Generator が
+            // ToDisplayString() で '.' 形式の NameHash を出力するため、比較・保存の
+            // 両方で '.' 形式に正規化する。
+            string normalizedOldName = oldName.Replace('+', '.');
+            string newName = (t.FullName ?? t.Name).Replace('+', '.');
+
+            if (normalizedOldName == newName)
                 throw new SaveRegistrationException("ECSAVE-R006",
                     $"RenamedFrom must differ from the current name: {newName}");
 
-            if (_renamedFrom.TryGetValue(oldName, out var existing))
+            if (_renamedFrom.TryGetValue(normalizedOldName, out var existing))
             {
                 if (existing == newName) return;
                 throw new SaveRegistrationException("ECSAVE-R007",
-                    $"RenamedFrom '{oldName}' is already mapped to '{existing}'");
+                    $"RenamedFrom '{normalizedOldName}' is already mapped to '{existing}'");
             }
 
-            _renamedFrom.Add(oldName, newName);
+            _renamedFrom.Add(normalizedOldName, newName);
         }
 
         internal SaveDefinition Build()
         {
+            if (_pendingMigrations.Count > 0)
+            {
+                var names = new List<string>(_pendingMigrations.Count);
+                for (int i = 0; i < _pendingMigrations.Count; i++)
+                    names.Add(_pendingMigrations[i].MigrationType.FullName);
+                throw new SaveRegistrationException(
+                    "ECSAVE-R011",
+                    "RegisterMigration<T>() was called but no corresponding MigrationStepBase was registered. " +
+                    "This usually indicates the Source Generator did not process this scope, or the generated binder was not invoked. " +
+                    "Migrated types: " + string.Join(", ", names));
+            }
+
             var def = new SaveDefinition(
                 _modules,
                 _identities,
                 _selections,
                 _gameDataVersion,
-                _worldId);
+                _worldId)
+            {
+                AutoRepairFixedString = _autoRepairFixedString,
+            };
 
             if (_migrations.Count > 0 || _renamedFrom.Count > 0)
             {
@@ -149,6 +207,31 @@ namespace ECSave
                 def.Migrations = table;
             }
             return def;
+        }
+
+        private static Type ExtractNewTypeArgument(Type type)
+        {
+            foreach (var iface in type.GetInterfaces())
+            {
+                if (!iface.IsGenericType) continue;
+                if (iface.GetGenericTypeDefinition() != typeof(IComponentMigration<,>)) continue;
+                return iface.GetGenericArguments()[1];
+            }
+            return null;
+        }
+
+        private static string NormalizeTypeName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            if (name.StartsWith("global::", StringComparison.Ordinal))
+                name = name.Substring(8);
+            return name.Replace('+', '.');
+        }
+
+        private sealed class PendingMigration
+        {
+            public Type MigrationType;
+            public string NewTypeName;
         }
     }
 }

@@ -120,7 +120,8 @@ namespace ECSave.Tests.Runtime.SubScene
                 };
                 SubSceneStateSection.Write(ref writer, scenes);
 
-                int written = SubSceneStateLayout.ComputeBodySize(1);
+                // 修正: ComputeBodySize(1) → ComputeBodySize(scenes)
+                int written = SubSceneStateLayout.ComputeBodySize(scenes);
                 var table = MakeTable(entries, SectionKind.SubSceneState, 0, (ulong)written);
                 var view = new ByteView(ptr, written);
 

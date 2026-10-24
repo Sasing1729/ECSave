@@ -42,7 +42,8 @@ namespace ECSave.Phase.Deserialize.Apply
 
                 if (requests[i].Mode == SceneRestoreMode.Required)
                 {
-                    UnityEngine.Debug.LogError(
+                    // 修正: LogError → LogWarning（エラーコードで既に通知済み）
+                    UnityEngine.Debug.LogWarning(
                         $"[ECSave] Required scene restore failed: {requests[i].Guid} ({outcomes[i].FailureReason})");
                     return SaveLoadErrorCode.SceneLoadFailed;
                 }

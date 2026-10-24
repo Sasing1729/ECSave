@@ -63,6 +63,18 @@ namespace ECSave.Format
 
         public int ReadI32() => unchecked((int)ReadU32());
 
+        public sbyte ReadI8() => unchecked((sbyte)ReadU8());
+        public short ReadI16() => unchecked((short)ReadU16());
+        public long ReadI64() => unchecked((long)ReadU64());
+
+        public bool ReadBool()
+        {
+            byte b = ReadU8();
+            if (b > 1)
+                throw new FormatException(FormatError.ValidationFailed, $"bool byte must be 0 or 1, got {b}");
+            return b != 0;
+        }
+
         /// <summary>指定長のバイト列をコピーせずにポインタを返す（呼び出し側が範囲外アクセスしないこと）。</summary>
         public byte* ReadBytesPtr(int count)
         {

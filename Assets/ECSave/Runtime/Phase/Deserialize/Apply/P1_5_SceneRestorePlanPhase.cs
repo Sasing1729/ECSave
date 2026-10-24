@@ -23,7 +23,7 @@ namespace ECSave.Phase.Deserialize.Apply
             for (int i = 0; i < view.Count; i++)
             {
                 var info = SubSceneStateSection.GetSceneLoadInfo(view, i);
-                list.Add(new SceneLoadRequest(info.Guid, info.State, info.RestoreMode));
+                list.Add(new SceneLoadRequest(info.Guid, info.State, info.RestoreMode, info.ContentHash));
             }
 
             requests = list.ToArray();

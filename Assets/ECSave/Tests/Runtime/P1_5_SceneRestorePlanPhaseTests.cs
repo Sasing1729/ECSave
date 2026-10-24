@@ -23,12 +23,13 @@ namespace ECSave.Tests.Runtime.SubScene
         }
 
         private static SubSceneStateSectionView? MakeView(
-            NativeArray<byte> buffer, SceneLoadInfo[] scenes)
+    NativeArray<byte> buffer, SceneLoadInfo[] scenes)
         {
             byte* ptr = (byte*)NativeArrayUnsafeUtility.GetUnsafePtr(buffer);
             var writer = new FormatWriter(ptr, buffer.Length);
             SubSceneStateSection.Write(ref writer, scenes);
-            int written = SubSceneStateLayout.ComputeBodySize(scenes.Length);
+            // 修正: ComputeBodySize(scenes.Length) → ComputeBodySize(scenes)
+            int written = SubSceneStateLayout.ComputeBodySize(scenes);
             return SubSceneStateSection.Read(ptr, written);
         }
 
