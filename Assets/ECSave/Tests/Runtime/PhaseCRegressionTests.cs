@@ -113,13 +113,13 @@ namespace ECSave.Tests.Runtime
             var buf = em.AddBuffer<InventoryElement>(e2);
             buf.Add(new InventoryElement { ItemId = 1, Count = 2 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
             // ロード: ByRegistration で、保存データに無いコンポーネントを除去
             // （修正前は RegistrationId 衝突で P4 が誤動作していた）
             RestartWorld();
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -154,12 +154,12 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(disabled, new Health { Current = 99, Max = 100 });
             em.AddComponent<Disabled>(disabled);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -193,12 +193,12 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(disabled, new Health { Current = 42, Max = 100 });
             em.AddComponent<Disabled>(disabled);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -217,7 +217,7 @@ namespace ECSave.Tests.Runtime
                 1, "PhaseCWorld"));
 
             // 空の SaveData
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -226,7 +226,7 @@ namespace ECSave.Tests.Runtime
             _world.EntityManager.AddComponentData(extra, new Health { Current = 1, Max = 1 });
             _world.EntityManager.AddComponent<Disabled>(extra);
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -263,7 +263,7 @@ namespace ECSave.Tests.Runtime
             var chunk = em.GetChunk(e);
             em.SetChunkComponentData(chunk, new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
             // 保存データに ChunkData セクションが含まれていること

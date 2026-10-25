@@ -53,7 +53,7 @@ namespace ECSave.Tests.Generator
 
                 var sys = scope.GetSaveSystem();
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
@@ -64,7 +64,7 @@ namespace ECSave.Tests.Generator
                 em2.AddComponentData(x, new GenPlayerId { Value = 2 });
                 em2.AddComponentData(x, new GenHealth { Current = 0, Max = 0 });
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -103,7 +103,7 @@ namespace ECSave.Tests.Generator
 
                 // 何も MarkDestroyed しない
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -114,7 +114,7 @@ namespace ECSave.Tests.Generator
                 em2.AddComponentData(x, new GenPlayerId { Value = 1 });
                 em2.AddComponentData(x, new GenHealth { Current = 0, Max = 0 });
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -144,13 +144,13 @@ namespace ECSave.Tests.Generator
                 em.DestroyEntity(b);
 
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("GenTombstoneWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -185,7 +185,7 @@ namespace ECSave.Tests.Generator
                 em.DestroyEntity(b);
 
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -198,7 +198,7 @@ namespace ECSave.Tests.Generator
 
                 // DeletionPolicy.None: 既存 Entity は削除されない。
                 // Tombstone が無効（識別型未登録）でも x が削除されないことを検証。
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -232,7 +232,7 @@ namespace ECSave.Tests.Generator
                 em.DestroyEntity(b);
 
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -246,7 +246,7 @@ namespace ECSave.Tests.Generator
                 // ConfigureSubScene 未オーバーライド → RegisterDestroyedEntities 無効
                 // → Tombstone セクションが生成されず、P6.5 が何もしない。
                 // DeletionPolicy.None で既存 Entity が残ることを検証。
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);

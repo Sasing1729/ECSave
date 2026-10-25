@@ -142,13 +142,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Inner.Label, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -178,13 +178,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Mid.Inner.Data, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenDeepNestedWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -213,13 +213,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Direct, AWithPartialTail(20, 0xE3), 61);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -249,13 +249,13 @@ namespace ECSave.Tests.Generator
                 profile.Direct = "hello";
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -285,13 +285,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Inner.Label, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -365,25 +365,25 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Inner.Label, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save1 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save1 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save1.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load1 = sys.DeserializeAsync(_world, save1.Data,
+                var load1 = sys.Deserialize(_world, save1.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load1.IsSuccess);
                 Assert.IsNotEmpty(FixedStringWarnings(load1));
 
-                var save2 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save2 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save2.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load2 = sys.DeserializeAsync(_world, save2.Data,
+                var load2 = sys.Deserialize(_world, save2.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load2.IsSuccess);
@@ -412,13 +412,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref p2.Inner.Label, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e2, p2);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenNestedFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

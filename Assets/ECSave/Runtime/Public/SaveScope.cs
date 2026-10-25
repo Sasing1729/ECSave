@@ -9,11 +9,8 @@ namespace ECSave
     public abstract class SaveScope : ScriptableObject, IDisposable
     {
         private SaveSystem _saveSystem;
-        private readonly List<string> _warnings = new List<string>();
         private bool _disposed;
         private Exception _buildError;
-
-        public IReadOnlyList<string> RegistrationWarnings => _warnings;
 
         public SaveSystem GetSaveSystem()
         {
@@ -51,21 +48,18 @@ namespace ECSave
             var subSceneBuilder = new SubSceneDefinitionBuilderImpl();
             ConfigureSubScene(subSceneBuilder);
 
-            string rawCustomId = GetScopeId();
-            string normalizedCustomId = rawCustomId != null ? rawCustomId.Replace('+', '.') : null;
-            string rawTypeId = GetType().FullName;
-            string normalizedTypeId = rawTypeId != null ? rawTypeId.Replace('+', '.') : null;
-
-            if (TryResolveMainBinder(rawCustomId, normalizedCustomId, out var mainBinder)
-                || TryResolveMainBinder(rawTypeId, normalizedTypeId, out mainBinder))
+            // binder の解決は GetType().FullName ベース。
+            // Source Generator は type.ToDisplayString()（= ネスト型で '.' 区切り）で
+            // ScopeId を emit するため、FullName（= ネスト型で '+' 区切り）を
+            // '.' に正規化した形も試す。
+            if (TryResolveMainBinder(out var mainBinder))
             {
-                mainBinder?.BindModules(mainBuilder);
+                mainBinder.BindModules(mainBuilder);
             }
 
-            if (TryResolveSubBinder(rawCustomId, normalizedCustomId, out var subBinder)
-                || TryResolveSubBinder(rawTypeId, normalizedTypeId, out subBinder))
+            if (TryResolveSubBinder(out var subBinder))
             {
-                subBinder?.BindSubScene(subSceneBuilder);
+                subBinder.BindSubScene(subSceneBuilder);
             }
 
             var def = mainBuilder.Build();
@@ -109,44 +103,48 @@ namespace ECSave
 
             def.SubScene = sub;
 
-            _warnings.Clear();
-            _warnings.AddRange(mainBuilder.Warnings);
-
             return new SaveSystem(def);
         }
 
-        private static bool TryResolveMainBinder(
-            string rawId, string normalizedId, out ISaveModuleBinder binder)
+        /// <summary>
+        /// 自身の型名で binder を解決する。
+        ///
+        /// <para>
+        /// <b>正規化</b>: <c>GetType().FullName</c> はネスト型で <c>'+'</c> 区切り
+        /// （<c>A.B+Inner</c>）だが、Source Generator は <c>ToDisplayString()</c> で
+        /// <c>'.'</c> 区切り（<c>A.B.Inner</c>）の <c>ScopeId</c> を emit する。
+        /// 両方を試すことで、あらゆる型階層で解決できる。
+        /// </para>
+        /// </summary>
+        private bool TryResolveMainBinder(out ISaveModuleBinder binder)
         {
             binder = null;
-            if (!string.IsNullOrEmpty(rawId) && GeneratedScopeRegistry.TryGet(rawId, out binder))
+            var rawId = GetType().FullName;
+            if (string.IsNullOrEmpty(rawId)) return false;
+
+            if (GeneratedScopeRegistry.TryGet(rawId, out binder))
                 return true;
-            if (!string.IsNullOrEmpty(normalizedId) && normalizedId != rawId
-                && GeneratedScopeRegistry.TryGet(normalizedId, out binder))
-                return true;
-            return false;
+
+            var normalized = rawId.Replace('+', '.');
+            return normalized != rawId && GeneratedScopeRegistry.TryGet(normalized, out binder);
         }
 
-        private static bool TryResolveSubBinder(
-            string rawId, string normalizedId, out ISubSceneBinder binder)
+        private bool TryResolveSubBinder(out ISubSceneBinder binder)
         {
             binder = null;
-            if (!string.IsNullOrEmpty(rawId) && GeneratedScopeRegistry.TryGetSubScene(rawId, out binder))
+            var rawId = GetType().FullName;
+            if (string.IsNullOrEmpty(rawId)) return false;
+
+            if (GeneratedScopeRegistry.TryGetSubScene(rawId, out binder))
                 return true;
-            if (!string.IsNullOrEmpty(normalizedId) && normalizedId != rawId
-                && GeneratedScopeRegistry.TryGetSubScene(normalizedId, out binder))
-                return true;
-            return false;
+
+            var normalized = rawId.Replace('+', '.');
+            return normalized != rawId && GeneratedScopeRegistry.TryGetSubScene(normalized, out binder);
         }
 
         protected abstract void Configure(ISaveDefinitionBuilder builder);
 
         protected virtual void ConfigureSubScene(ISubSceneDefinitionBuilder builder) { }
-
-        protected virtual string GetScopeId()
-        {
-            return GetType().FullName;
-        }
 
         public void Dispose()
         {
@@ -154,7 +152,6 @@ namespace ECSave
             _disposed = true;
             _saveSystem = null;
             _buildError = null;
-            _warnings.Clear();
         }
 
         private void OnDestroy()

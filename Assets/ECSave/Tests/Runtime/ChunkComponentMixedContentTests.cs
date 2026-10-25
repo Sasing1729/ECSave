@@ -128,12 +128,12 @@ namespace ECSave.Tests.Runtime
             value.Name = "chunk-name";
             em.SetChunkComponentData(chunk, value);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -169,12 +169,12 @@ namespace ECSave.Tests.Runtime
             value.Name = "no-ref";
             em.SetChunkComponentData(chunk, value);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -209,12 +209,12 @@ namespace ECSave.Tests.Runtime
             SetFixedStringRaw(ref broken.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
             em.SetChunkComponentData(chunk, broken);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -251,12 +251,12 @@ namespace ECSave.Tests.Runtime
             SetFixedStringRaw(ref broken.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
             em.SetChunkComponentData(chunk, broken);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -293,7 +293,7 @@ namespace ECSave.Tests.Runtime
             value.Name = "valid";
             em.SetChunkComponentData(chunk, value);
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             var err = SaveCompression.TryDecompress(save.Data, out var raw);
@@ -328,7 +328,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, raw,
+            var load = sys.Deserialize(_world, raw,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
 

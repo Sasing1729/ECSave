@@ -127,7 +127,7 @@ namespace ECSave.Tests.Runtime
                 Value = 7,
             });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
             return save.Data;
         }
@@ -180,7 +180,7 @@ namespace ECSave.Tests.Runtime
                 _world = new World("SelectionDiscriminationWorld");
 
                 var sys = scope.GetSaveSystem();
-                var load = sys.DeserializeAsync(_world, data,
+                var load = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -209,7 +209,7 @@ namespace ECSave.Tests.Runtime
                 _world = new World("SelectionDiscriminationWorld");
 
                 var sys = scope.GetSaveSystem();
-                var load = sys.DeserializeAsync(_world, data,
+                var load = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -249,7 +249,7 @@ namespace ECSave.Tests.Runtime
                 Value = 7,
             });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             uint pid = ReadReferenceHolderTargetPid(save.Data);

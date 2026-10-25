@@ -56,13 +56,13 @@ namespace ECSave.Tests.Runtime
                     em.SetComponentEnabled<EmptyBufferElement>(entities[i], false);
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             _world.Dispose();
             _world = new World("EnableableEmptyBufferTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -101,13 +101,13 @@ namespace ECSave.Tests.Runtime
                 buf.Add(default);
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EnableableEmptyBufferTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);

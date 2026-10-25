@@ -50,7 +50,7 @@ namespace ECSave.Tests.MinimalE2E
             }
 
             // Act 1: Serialize
-            var saveResult = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var saveResult = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(saveResult.IsSuccess, $"Serialize failed: {saveResult.ErrorCode}");
             Assert.IsNotNull(saveResult.Data);
             Assert.Greater(saveResult.Data.Length, 0);
@@ -61,7 +61,7 @@ namespace ECSave.Tests.MinimalE2E
 
             // Act 2: Deserialize
             var loadResult = _system
-                .DeserializeAsync(_world, saveResult.Data,
+                .Deserialize(_world, saveResult.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
 
@@ -86,7 +86,7 @@ namespace ECSave.Tests.MinimalE2E
         [Test]
         public void Serialize_EmptyWorld_Succeeds()
         {
-            var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var result = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(result.IsSuccess, $"ErrorCode={result.ErrorCode}");
             Assert.IsNotNull(result.Data);
             Assert.Greater(result.Data.Length, 0);
@@ -98,7 +98,7 @@ namespace ECSave.Tests.MinimalE2E
             // 適当なゴミデータ
             var bad = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
             var result = _system
-                .DeserializeAsync(_world, bad,
+                .Deserialize(_world, bad,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
 
@@ -110,7 +110,7 @@ namespace ECSave.Tests.MinimalE2E
         public void Deserialize_EmptyArray_Fails()
         {
             var result = _system
-                .DeserializeAsync(_world, new byte[0],
+                .Deserialize(_world, new byte[0],
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
 

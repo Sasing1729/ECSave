@@ -54,13 +54,13 @@ namespace ECSave.Tests.Generator
                 em.SetComponentEnabled<GenStunned>(entities[2], false);
                 em.SetComponentEnabled<GenStunned>(entities[4], false);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("EnableableAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True, $"Deserialize: {load.ErrorCode}");
@@ -104,13 +104,13 @@ namespace ECSave.Tests.Generator
                     em.SetComponentEnabled<GenStunned>(entities[i], false);
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("EnableableAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -147,13 +147,13 @@ namespace ECSave.Tests.Generator
                     em.AddComponentData(e, new GenStunned { FramesRemaining = i });
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("EnableableAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -192,13 +192,13 @@ namespace ECSave.Tests.Generator
                         em.SetComponentEnabled<GenStunned>(e, false);
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("EnableableAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -229,10 +229,10 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -261,13 +261,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e2, new GenStunned { FramesRemaining = 1 });
                 em.SetComponentEnabled<GenStunned>(e2, false);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("EnableableAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);

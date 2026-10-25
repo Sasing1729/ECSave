@@ -162,14 +162,14 @@ namespace ECSave.Tests.Generator
                     Value = 42,
                 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -199,14 +199,14 @@ namespace ECSave.Tests.Generator
                 value.Items.Add("def");
                 em.SetChunkComponentData(chunk, value);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -238,14 +238,14 @@ namespace ECSave.Tests.Generator
                     Value = 42,
                 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -274,14 +274,14 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref broken.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.SetChunkComponentData(chunk, broken);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -323,14 +323,14 @@ namespace ECSave.Tests.Generator
 
                 em.SetChunkComponentData(chunk, broken);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -370,14 +370,14 @@ namespace ECSave.Tests.Generator
 
                 Assert.AreNotEqual(chunk1, chunk2);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -407,14 +407,14 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(commonEntity, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -439,14 +439,14 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref broken.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.SetChunkComponentData(chunk, broken);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -474,27 +474,27 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref broken.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.SetChunkComponentData(chunk, broken);
 
-                var save1 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save1 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save1.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load1 = sys.DeserializeAsync(_world, save1.Data,
+                var load1 = sys.Deserialize(_world, save1.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load1.IsSuccess);
                 Assert.IsNotEmpty(FixedStringWarnings(load1));
 
-                var save2 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save2 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save2.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkFixedStringWorld");
                 em = _world.EntityManager;
 
-                var load2 = sys.DeserializeAsync(_world, save2.Data,
+                var load2 = sys.Deserialize(_world, save2.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load2.IsSuccess);

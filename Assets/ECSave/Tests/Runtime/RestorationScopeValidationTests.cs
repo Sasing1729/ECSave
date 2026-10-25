@@ -46,7 +46,7 @@ namespace ECSave.Tests.Runtime
             var otherQuery = otherWorld.EntityManager.CreateEntityQuery(typeof(Health));
 
             Assert.Throws<ArgumentException>(() =>
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -58,7 +58,7 @@ namespace ECSave.Tests.Runtime
             q.Dispose();
 
             Assert.Throws<ArgumentException>(() =>
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(q), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -67,7 +67,7 @@ namespace ECSave.Tests.Runtime
         public void DeserializeAsync_CustomScopeDefaultQuery_ThrowsArgumentException()
         {
             Assert.Throws<ArgumentException>(() =>
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(default), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -79,7 +79,7 @@ namespace ECSave.Tests.Runtime
             var otherQuery = otherWorld.EntityManager.CreateEntityQuery(typeof(Health));
 
             var ex = Assert.Throws<ArgumentException>(() =>
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
 
@@ -96,7 +96,7 @@ namespace ECSave.Tests.Runtime
         {
             var q = _world.EntityManager.CreateEntityQuery(typeof(Health));
 
-            var result = _system.DeserializeAsync(_world, new byte[] { 1, 2, 3, 4 },
+            var result = _system.Deserialize(_world, new byte[] { 1, 2, 3, 4 },
                 RestorationScope.Custom(q), DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -107,7 +107,7 @@ namespace ECSave.Tests.Runtime
         [Test]
         public void DeserializeAsync_EntireWorld_NoValidation()
         {
-            var result = _system.DeserializeAsync(_world, new byte[] { 1, 2, 3, 4 },
+            var result = _system.Deserialize(_world, new byte[] { 1, 2, 3, 4 },
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -128,7 +128,7 @@ namespace ECSave.Tests.Runtime
             cts.Cancel();
 
             Assert.Throws<ArgumentException>(() =>
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None, cts.Token)
                     .GetAwaiter().GetResult());
         }
@@ -144,7 +144,7 @@ namespace ECSave.Tests.Runtime
             var otherQuery = otherWorld.EntityManager.CreateEntityQuery(typeof(Health));
 
             Assert.Throws<ArgumentNullException>(() =>
-                _system.DeserializeAsync(null, new byte[] { 1 },
+                _system.Deserialize(null, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -156,7 +156,7 @@ namespace ECSave.Tests.Runtime
             var otherQuery = otherWorld.EntityManager.CreateEntityQuery(typeof(Health));
 
             Assert.Throws<ArgumentNullException>(() =>
-                _system.DeserializeAsync(_world, null,
+                _system.Deserialize(_world, null,
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -171,7 +171,7 @@ namespace ECSave.Tests.Runtime
             deadWorld.Dispose();
 
             Assert.Throws<ObjectDisposedException>(() =>
-                _system.DeserializeAsync(deadWorld, new byte[] { 1 },
+                _system.Deserialize(deadWorld, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -246,7 +246,7 @@ namespace ECSave.Tests.Runtime
 
             try
             {
-                _system.DeserializeAsync(_world, new byte[] { 1 },
+                _system.Deserialize(_world, new byte[] { 1 },
                     RestorationScope.Custom(otherQuery), DeletionPolicy.None)
                     .GetAwaiter().GetResult();
             }
@@ -258,7 +258,7 @@ namespace ECSave.Tests.Runtime
             Assert.IsFalse(sys.IsBusy, "Guard must not be held after validation failure");
 
             // 後続の有効な呼び出しが通ることも確認
-            var result = _system.DeserializeAsync(_world, new byte[] { 1, 2, 3, 4 },
+            var result = _system.Deserialize(_world, new byte[] { 1, 2, 3, 4 },
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.AreEqual(SaveLoadErrorCode.CorruptedData, result.ErrorCode);

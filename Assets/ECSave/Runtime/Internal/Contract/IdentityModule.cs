@@ -50,7 +50,16 @@ namespace ECSave.Internal
             ref IdentityIndex index,
             uint typeIndex);
 
-        public abstract void ApplySectionBody(
+        /// <summary>
+        /// Identity セクションを World に復元する。
+        ///
+        /// <para>
+        /// <b>命名</b>: 旧名 <c>ApplySectionBody</c> から改名
+        /// （<see cref="SaveTypeModule.RestoreSection"/> と統一）。
+        /// 意味は同じ: セクションに含まれる識別キーを各 Entity のコンポーネントに書き込む。
+        /// </para>
+        /// </summary>
+        public abstract void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em);

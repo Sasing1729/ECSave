@@ -137,7 +137,7 @@ namespace Game.MinimalE2E
             return SaveLoadErrorCode.None;
         }
 
-        public override unsafe void ApplySectionBody(
+        public override unsafe void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em)

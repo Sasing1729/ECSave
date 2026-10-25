@@ -74,7 +74,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
                 int updates = DriveUntilComplete(op);
 
                 Assert.That(op.Status.IsCompleted(), Is.True,
@@ -110,7 +110,7 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var op = sys.DeserializeAsync(_world, data,
+                var op = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
                 Assert.That(op.Status.IsCompleted(), Is.False,
                     "FrameBoundary deserialize should not complete synchronously");
@@ -147,7 +147,7 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var op = sys.DeserializeAsync(_world, data,
+                var op = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
 
                 DriveUntilComplete(op);
@@ -172,7 +172,7 @@ namespace ECSave.Tests.Generator
                 var cts = new System.Threading.CancellationTokenSource();
                 cts.Cancel();
 
-                var op = sys.DeserializeAsync(_world, data,
+                var op = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration, cts.Token);
                 Assert.That(op.Status.IsCompleted(), Is.True);
                 var result = op.GetAwaiter().GetResult();
@@ -194,7 +194,7 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var op = sys.DeserializeAsync(_world, data,
+                var op = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
                 Assert.That(op.Status.IsCompleted(), Is.False);
 
@@ -223,11 +223,11 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var op1 = sys.DeserializeAsync(_world, data,
+                var op1 = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
                 Assert.That(op1.Status.IsCompleted(), Is.False);
 
-                var op2 = sys.DeserializeAsync(_world, data,
+                var op2 = sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
                 Assert.That(op2.Status.IsCompleted(), Is.True);
                 Assert.That(op2.GetAwaiter().GetResult().ErrorCode,
@@ -252,7 +252,7 @@ namespace ECSave.Tests.Generator
                 {
                     var sys = scope.GetSaveSystem();
 
-                    var op = sys.DeserializeAsync(bareWorld, data,
+                    var op = sys.Deserialize(bareWorld, data,
                         RestorationScope.EntireWorld, DeletionPolicy.ByRegistration);
                     Assert.That(op.Status.IsCompleted(), Is.True,
                         "Fallback path should complete synchronously");

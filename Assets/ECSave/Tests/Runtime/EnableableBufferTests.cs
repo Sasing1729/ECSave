@@ -69,7 +69,7 @@ namespace ECSave.Tests.Runtime
                 expected[i * 10] = em.IsComponentEnabled<StatusEffect>(entities[i]);
 
             // Serialize
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             // World 再構築
@@ -77,7 +77,7 @@ namespace ECSave.Tests.Runtime
             _world = new World("EnableableBufferTestWorld");
 
             // Deserialize
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -118,13 +118,13 @@ namespace ECSave.Tests.Runtime
                 buf.Add(new StatusEffect { EffectId = i, Duration = 10 });
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EnableableBufferTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -148,13 +148,13 @@ namespace ECSave.Tests.Runtime
                 em.SetComponentEnabled<StatusEffect>(e, false);
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EnableableBufferTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -186,13 +186,13 @@ namespace ECSave.Tests.Runtime
             for (int i = 0; i < 3; i++)
                 expected[i] = em.IsComponentEnabled<StatusEffect>(entities[i]);
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             _world.Dispose();
             _world = new World("EnableableBufferTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");

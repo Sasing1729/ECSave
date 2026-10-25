@@ -87,12 +87,12 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(entities[0]);
             SetChunkValue(em, entities[0], new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -120,12 +120,12 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new Health { Current = 10, Max = 20 });
             }
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");

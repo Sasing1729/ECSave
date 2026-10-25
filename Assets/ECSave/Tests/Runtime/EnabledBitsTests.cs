@@ -71,14 +71,14 @@ namespace ECSave.Tests.Runtime
                 expected[i * 10] = em.IsComponentEnabled<Stunned>(entities[i]);
 
             // Serialize → World 再構築 → Deserialize
-            var saveResult = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var saveResult = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(saveResult.IsSuccess, $"Serialize failed: {saveResult.ErrorCode}");
 
             _world.Dispose();
             _world = new World("EnabledBitsTestWorld");
 
             var loadResult = _system
-                .DeserializeAsync(_world, saveResult.Data,
+                .Deserialize(_world, saveResult.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(loadResult.IsSuccess, $"Deserialize failed: {loadResult.ErrorCode}");
@@ -116,13 +116,13 @@ namespace ECSave.Tests.Runtime
                 em.SetComponentData(e, new Stunned { FramesRemaining = 100 });
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EnabledBitsTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -147,13 +147,13 @@ namespace ECSave.Tests.Runtime
                 em.SetComponentEnabled<Stunned>(e, false);
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EnabledBitsTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);

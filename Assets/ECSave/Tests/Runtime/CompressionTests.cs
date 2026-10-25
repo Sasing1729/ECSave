@@ -95,7 +95,7 @@ namespace ECSave.Tests.Runtime
                 em.SetComponentData(entities[i], new Health { Current = cur, Max = 1000 });
             }
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
             return save.Data;
         }
@@ -372,7 +372,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -401,7 +401,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -421,7 +421,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, raw,
+            var load = sys.Deserialize(_world, raw,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -441,14 +441,14 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new Health { Current = 5, Max = 9 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
             Assert.Less(save.Data.Length, SaveCompression.MinCompressLength);
             Assert.IsFalse(SaveCompression.IsCompressed(save.Data));
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -473,7 +473,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);
@@ -495,7 +495,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, truncated,
+            var load = sys.Deserialize(_world, truncated,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);
@@ -513,7 +513,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);
@@ -531,7 +531,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);
@@ -552,7 +552,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
 
-            var load = sys.DeserializeAsync(_world, recompressed,
+            var load = sys.Deserialize(_world, recompressed,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);

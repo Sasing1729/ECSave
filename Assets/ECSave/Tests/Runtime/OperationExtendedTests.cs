@@ -43,7 +43,7 @@ namespace ECSave.Tests.Runtime
         {
             var sys = CreateSystem();
             Assert.Throws<System.ArgumentNullException>(() =>
-                sys.SerializeAsync(null).GetAwaiter().GetResult());
+                sys.Serialize(null).GetAwaiter().GetResult());
         }
 
         [Test]
@@ -54,7 +54,7 @@ namespace ECSave.Tests.Runtime
             w.Dispose();
 
             Assert.Throws<System.ObjectDisposedException>(() =>
-                sys.SerializeAsync(w).GetAwaiter().GetResult());
+                sys.Serialize(w).GetAwaiter().GetResult());
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace ECSave.Tests.Runtime
         {
             var sys = CreateSystem();
             Assert.Throws<System.ArgumentNullException>(() =>
-                sys.DeserializeAsync(null, new byte[] { 1 },
+                sys.Deserialize(null, new byte[] { 1 },
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -75,7 +75,7 @@ namespace ECSave.Tests.Runtime
             w.Dispose();
 
             Assert.Throws<System.ObjectDisposedException>(() =>
-                sys.DeserializeAsync(w, new byte[] { 1 },
+                sys.Deserialize(w, new byte[] { 1 },
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -85,7 +85,7 @@ namespace ECSave.Tests.Runtime
         {
             var sys = CreateSystem();
             Assert.Throws<System.ArgumentNullException>(() =>
-                sys.DeserializeAsync(_world, null,
+                sys.Deserialize(_world, null,
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult());
         }
@@ -99,7 +99,7 @@ namespace ECSave.Tests.Runtime
             try
             {
                 var saveSys = CreateSystem();
-                var result = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var result = saveSys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.AreEqual(SaveLoadErrorCode.ConcurrentOperation, result.ErrorCode);
             }
             finally
@@ -117,7 +117,7 @@ namespace ECSave.Tests.Runtime
             try
             {
                 var saveSys = CreateSystem();
-                var result = saveSys.DeserializeAsync(_world, new byte[] { 1, 2, 3, 4 },
+                var result = saveSys.Deserialize(_world, new byte[] { 1, 2, 3, 4 },
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.AreEqual(SaveLoadErrorCode.ConcurrentOperation, result.ErrorCode);
@@ -139,8 +139,8 @@ namespace ECSave.Tests.Runtime
 
             try
             {
-                var r1 = sys1.SerializeAsync(_world).GetAwaiter().GetResult();
-                var r2 = sys2.SerializeAsync(_world).GetAwaiter().GetResult();
+                var r1 = sys1.Serialize(_world).GetAwaiter().GetResult();
+                var r2 = sys2.Serialize(_world).GetAwaiter().GetResult();
 
                 Assert.AreEqual(SaveLoadErrorCode.ConcurrentOperation, r1.ErrorCode);
                 Assert.AreEqual(SaveLoadErrorCode.ConcurrentOperation, r2.ErrorCode);
@@ -160,8 +160,8 @@ namespace ECSave.Tests.Runtime
             var sys1 = CreateSystem("OperationExtTestWorld");
             var sys2 = CreateSystem("IndependentWorld");
 
-            var r1 = sys1.SerializeAsync(_world).GetAwaiter().GetResult();
-            var r2 = sys2.SerializeAsync(world2).GetAwaiter().GetResult();
+            var r1 = sys1.Serialize(_world).GetAwaiter().GetResult();
+            var r2 = sys2.Serialize(world2).GetAwaiter().GetResult();
 
             Assert.IsTrue(r1.IsSuccess);
             Assert.IsTrue(r2.IsSuccess);
@@ -172,7 +172,7 @@ namespace ECSave.Tests.Runtime
         {
             var sys = CreateSystem();
 
-            var fail = sys.DeserializeAsync(_world, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
+            var fail = sys.Deserialize(_world, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(fail.IsSuccess);
@@ -180,7 +180,7 @@ namespace ECSave.Tests.Runtime
             var runtime = GetRuntime();
             Assert.IsFalse(runtime.IsBusy);
 
-            var ok = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var ok = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(ok.IsSuccess);
         }
 
@@ -188,7 +188,7 @@ namespace ECSave.Tests.Runtime
         public void AfterSerializeSuccess_GuardReleased()
         {
             var sys = CreateSystem();
-            var r = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var r = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(r.IsSuccess);
 
             var runtime = GetRuntime();
@@ -205,16 +205,16 @@ namespace ECSave.Tests.Runtime
 
             for (int i = 0; i < 5; i++)
             {
-                var r = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var r = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(r.IsSuccess, $"iteration {i}: {r.ErrorCode}");
             }
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             for (int i = 0; i < 3; i++)
             {
-                var l = sys.DeserializeAsync(_world, save.Data,
+                var l = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(l.IsSuccess, $"iteration {i}: {l.ErrorCode}");

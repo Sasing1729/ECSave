@@ -52,13 +52,13 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new HealthV1 { Value = 42 });
 
-            var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("D6StructureTestWorld");
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -81,7 +81,7 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new HealthV1 { Value = 7 });
 
-            var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
@@ -95,20 +95,20 @@ namespace ECSave.Tests.Runtime
             def.Migrations = table;
             var sys = new SaveSystem(def);
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
 
             // 移行後の再保存 → NameHeap が正しく引き継がれているか
-            var resave = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var resave = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(resave.IsSuccess);
 
             // 再保存データをロードできる（NameHeap 破損なら UnknownSectionIgnored になる）
             _world.Dispose();
             _world = new World("D6StructureTestWorld");
 
-            var load2 = sys.DeserializeAsync(_world, resave.Data,
+            var load2 = sys.Deserialize(_world, resave.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load2.IsSuccess);
@@ -135,7 +135,7 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new HealthV1 { Value = 99 });
 
-            var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
@@ -153,7 +153,7 @@ namespace ECSave.Tests.Runtime
             // クラッシュせずに完了することを検証
             Assert.DoesNotThrow(() =>
             {
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

@@ -62,14 +62,12 @@ namespace ECSave
         /// Serialize を実行する。
         ///
         /// <para>
-        /// <b>命名について</b>: 名前に <c>Async</c> を含むが、実装は
+        /// <b>実行モデル</b>:
+        /// <see cref="StreamingConsistencyMode.TimeBased"/>（既定）では
         /// <b>メインスレッド上で同期的に実行</b>し、完了済みの
-        /// <see cref="Cysharp.Threading.Tasks.UniTask{T}"/> を返す
-        /// （<see cref="StreamingConsistencyMode.TimeBased"/> の場合）。
-        /// これは公開 API 境界を UniTask に統一するためのシグネチャ選択であり、
+        /// <see cref="Cysharp.Threading.Tasks.UniTask{T}"/> を返す。
         /// 真の非同期（フレーム跨ぎ）は <see cref="SerializeAsyncNonBlocking"/>
-        /// または <see cref="StreamingConsistencyMode.FrameBoundary"/> を
-        /// 使用すること（ADR-21）。
+        /// または <see cref="StreamingConsistencyMode.FrameBoundary"/> を使用すること（ADR-21）。
         /// </para>
         ///
         /// <para>
@@ -81,12 +79,12 @@ namespace ECSave
         /// </para>
         ///
         /// <para>
-        /// <see cref="StreamingConsistencyMode.TimeBased"/>（既定）の場合は
-        /// 完了済みタスクを返すため、<c>.GetAwaiter().GetResult()</c> で
-        /// 即座に結果を取り出せる。
+        /// <b>命名</b>: 旧名 <c>SerializeAsync</c> から改名。実装は
+        /// <see cref="StreamingConsistencyMode.TimeBased"/> では同期的に実行されるため、
+        /// 名前に <c>Async</c> を含めない。
         /// </para>
         /// </summary>
-        public UniTask<SaveResult> SerializeAsync(
+        public UniTask<SaveResult> Serialize(
             World world,
             CancellationToken cancellationToken = default)
         {
@@ -129,7 +127,7 @@ namespace ECSave
             }
             catch (Exception ex)
             {
-                LogIfDevelopment(ex, "SerializeAsync failed");
+                LogIfDevelopment(ex, "Serialize failed");
                 return UniTask.FromResult(SaveResult.Failure(SaveLoadErrorCode.SerializationFailed));
             }
             finally
@@ -216,9 +214,12 @@ namespace ECSave
         /// Deserialize を実行する。
         ///
         /// <para>
-        /// <b>命名について</b>: <see cref="SerializeAsync"/> と同様、
-        /// <see cref="StreamingConsistencyMode.TimeBased"/> では
-        /// メインスレッド上で同期的に実行し、完了済みタスクを返す。
+        /// <b>実行モデル</b>:
+        /// <see cref="StreamingConsistencyMode.TimeBased"/>（既定）では
+        /// <b>メインスレッド上で同期的に実行</b>し、完了済みの
+        /// <see cref="Cysharp.Threading.Tasks.UniTask{T}"/> を返す。
+        /// 真の非同期（フレーム跨ぎ）は <see cref="DeserializeAsyncNonBlocking"/>
+        /// または <see cref="StreamingConsistencyMode.FrameBoundary"/> を使用すること（ADR-21）。
         /// </para>
         ///
         /// <para>
@@ -226,8 +227,14 @@ namespace ECSave
         /// の場合、<c>.GetAwaiter().GetResult()</c> はメインスレッドで
         /// デッドロックする。呼び出し側は <c>await</c> で待機すること。
         /// </para>
+        ///
+        /// <para>
+        /// <b>命名</b>: 旧名 <c>DeserializeAsync</c> から改名。実装は
+        /// <see cref="StreamingConsistencyMode.TimeBased"/> では同期的に実行されるため、
+        /// 名前に <c>Async</c> を含めない。
+        /// </para>
         /// </summary>
-        public UniTask<LoadResult> DeserializeAsync(
+        public UniTask<LoadResult> Deserialize(
             World world,
             byte[] data,
             RestorationScope restorationScope,
@@ -278,7 +285,7 @@ namespace ECSave
             }
             catch (Exception ex)
             {
-                LogIfDevelopment(ex, "DeserializeAsync failed");
+                LogIfDevelopment(ex, "Deserialize failed");
                 return UniTask.FromResult(LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed));
             }
             finally
@@ -413,18 +420,26 @@ namespace ECSave
                 return UniTask.FromResult(SaveResult.Failure(SaveLoadErrorCode.ConcurrentOperation));
             }
 
+            var op = new Operation(OperationKind.Serialize, cancellationToken);
             bool executed = false;
+
+            op.OnAbort = code =>
+            {
+                try { notifier.Uninstall(); } catch { }
+                tcs.TrySetResult(SaveResult.Failure(code));
+            };
+
+            if (sys != null) sys.SetCurrent(op);
 
             notifier.Install(() =>
             {
                 if (executed) return;
                 executed = true;
 
+                if (op.IsComplete) return;
+
                 try
                 {
-                    var op = new Operation(OperationKind.Serialize, cancellationToken);
-                    if (sys != null) sys.SetCurrent(op);
-
                     op.SetPhase(OperationPhase.S1_AwaitSnapshot);
 
                     try
@@ -490,18 +505,26 @@ namespace ECSave
                 return UniTask.FromResult(LoadResult.Failure(SaveLoadErrorCode.ConcurrentOperation));
             }
 
+            var op = new Operation(OperationKind.Deserialize, cancellationToken);
             bool executed = false;
+
+            op.OnAbort = code =>
+            {
+                try { notifier.Uninstall(); } catch { }
+                tcs.TrySetResult(LoadResult.Failure(code));
+            };
+
+            if (sys != null) sys.SetCurrent(op);
 
             notifier.Install(() =>
             {
                 if (executed) return;
                 executed = true;
 
+                if (op.IsComplete) return;
+
                 try
                 {
-                    var op = new Operation(OperationKind.Deserialize, cancellationToken);
-                    if (sys != null) sys.SetCurrent(op);
-
                     op.SetPhase(OperationPhase.D1_StructureValidation);
 
                     try

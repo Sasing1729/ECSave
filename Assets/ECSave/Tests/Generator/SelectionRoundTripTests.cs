@@ -63,13 +63,13 @@ namespace ECSave.Tests.Generator
                 var holder = em.CreateEntity();
                 em.AddComponentData(holder, new SelectionRef { Target = referenced, Value = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("SelectionTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -111,13 +111,13 @@ namespace ECSave.Tests.Generator
                 var holder = em.CreateEntity();
                 em.AddComponentData(holder, new SelectionRef { Target = referenced, Value = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("SelectionTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -154,13 +154,13 @@ namespace ECSave.Tests.Generator
                 var holder = em.CreateEntity();
                 em.AddComponentData(holder, new SelectionRef { Target = Entity.Null, Value = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("SelectionTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -205,13 +205,13 @@ namespace ECSave.Tests.Generator
                 var holder2 = em.CreateEntity();
                 em.AddComponentData(holder2, new SelectionRef { Target = r2, Value = 20 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("SelectionTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

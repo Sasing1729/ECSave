@@ -22,6 +22,10 @@ namespace ECSave
         /// </summary>
         public bool AutoRepairFixedString { get; internal set; } = true;
 
+        /// <summary>
+        /// modules のみを指定する最小構成。
+        /// identities / selections は空、GameDataVersion は明示指定。
+        /// </summary>
         public SaveDefinition(
             IReadOnlyList<SaveTypeModule> modules,
             int gameDataVersion,
@@ -35,6 +39,14 @@ namespace ECSave
         {
         }
 
+        /// <summary>
+        /// modules + identities を指定する構成。selections は空。
+        ///
+        /// <para>
+        /// <b>用途</b>: 識別子ベースの Entity マッチングを使うが、Entity 参照の選択伝播
+        /// （<c>SelectEntityReference</c>）は不要なケース。テストや小規模プロジェクトで頻出する。
+        /// </para>
+        /// </summary>
         public SaveDefinition(
             IReadOnlyList<SaveTypeModule> modules,
             IReadOnlyList<IdentityModule> identities,
@@ -49,6 +61,10 @@ namespace ECSave
         {
         }
 
+        /// <summary>
+        /// 全パラメータを明示指定する完全構成。
+        /// <see cref="SaveDefinitionBuilderImpl.Build"/> からも呼ばれる。
+        /// </summary>
         public SaveDefinition(
             IReadOnlyList<SaveTypeModule> modules,
             IReadOnlyList<IdentityModule> identities,

@@ -152,7 +152,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -166,7 +166,7 @@ namespace ECSave.Tests.Generator
 
                 _injector.FailPhase = "P7";
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -209,7 +209,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -220,7 +220,7 @@ namespace ECSave.Tests.Generator
 
                 _injector.FailPhase = "P7";
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -277,7 +277,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -288,7 +288,7 @@ namespace ECSave.Tests.Generator
 
                 _injector.FailPhase = null;
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -348,7 +348,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
@@ -360,7 +360,7 @@ namespace ECSave.Tests.Generator
                 LogAssert.ignoreFailingMessages = true;
                 _injector.FailPhase = "P7";
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 

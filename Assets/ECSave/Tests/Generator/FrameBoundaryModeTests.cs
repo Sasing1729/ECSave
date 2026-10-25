@@ -61,7 +61,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
                 Assert.That(op.Status.IsCompleted(), Is.False,
                     "FrameBoundary serialize should not complete synchronously");
 
@@ -98,7 +98,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
                 Assert.That(op.Status.IsCompleted(), Is.True,
                     "TimeBased mode completes synchronously (Execute blocks on jobs)");
 
@@ -120,7 +120,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
                 int updates = 0;
                 while (!op.Status.IsCompleted() && updates < 100)
                 {

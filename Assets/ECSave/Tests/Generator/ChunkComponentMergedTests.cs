@@ -106,13 +106,13 @@ namespace ECSave.Tests.Generator
 
                 SetupTwoGroups(em, out _, out _);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("GenChunkMergedWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -139,13 +139,13 @@ namespace ECSave.Tests.Generator
 
                 SetupSingleGroup(em, out _);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkMergedWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -172,13 +172,13 @@ namespace ECSave.Tests.Generator
 
                 SetupTwoGroups(em, out _, out _);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenChunkMergedWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

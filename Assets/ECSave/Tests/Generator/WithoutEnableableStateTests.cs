@@ -53,13 +53,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenIgnored { Value = 42 });
                 em.SetComponentEnabled<GenIgnored>(e, false);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenWithoutEnableableWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -100,13 +100,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenIgnored { Value = 7 });
                 em.SetComponentEnabled<GenIgnored>(e, true);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenWithoutEnableableWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

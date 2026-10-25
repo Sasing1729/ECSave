@@ -65,6 +65,14 @@ namespace ECSave.Internal
             CancelAsyncCapture();
             buffer.InitRecordLengths(Allocator.Persistent);
 
+            // 同期版 Capture と契約を揃える。
+            //   AppendEnabledStates が HasEnabledStates を要求するため、
+            //   enableable モジュールでは必ず初期化する。
+            //   SnapshotBuffer.InitEnabledStates は冪等なので、呼び出し元
+            //   (SerializeOperation.DoScheduleAsync) と二重に呼ばれても安全。
+            if (HasEnabledBits)
+                buffer.InitEnabledStates(Allocator.Persistent);
+
             _asyncQuery = query;
             _asyncChunks = query.ToArchetypeChunkArray(Allocator.Persistent);
             int chunkCount = _asyncChunks.Length;
@@ -235,7 +243,7 @@ namespace ECSave.Internal
             }
         }
 
-        public override unsafe void ApplySectionBody(
+        public override unsafe void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em)

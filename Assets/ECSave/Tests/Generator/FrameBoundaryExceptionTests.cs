@@ -85,7 +85,7 @@ namespace ECSave.Tests.Generator
                     var e = em.CreateEntity();
                     em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                    var op = sys.SerializeAsync(bareWorld);
+                    var op = sys.Serialize(bareWorld);
                     Assert.That(op.Status.IsCompleted(), Is.True,
                         "Fallback path should complete synchronously");
                     Assert.That(op.GetAwaiter().GetResult().IsSuccess, Is.True);
@@ -109,10 +109,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                var op1 = sys.SerializeAsync(_world);
+                var op1 = sys.Serialize(_world);
                 Assert.That(op1.Status.IsCompleted(), Is.False);
 
-                var op2 = sys.SerializeAsync(_world);
+                var op2 = sys.Serialize(_world);
                 Assert.That(op2.Status.IsCompleted(), Is.True);
                 var r2 = op2.GetAwaiter().GetResult();
                 Assert.That(r2.IsSuccess, Is.False);
@@ -135,7 +135,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
                 Assert.That(op.Status.IsCompleted(), Is.False);
 
                 _group.Update();
@@ -165,7 +165,7 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                var op = sys.SerializeAsync(_world);
+                var op = sys.Serialize(_world);
 
                 for (int i = 0; i < 2 && !op.Status.IsCompleted(); i++)
                     _group.Update();
@@ -201,7 +201,7 @@ namespace ECSave.Tests.Generator
                 var cts = new System.Threading.CancellationTokenSource();
                 cts.Cancel();
 
-                var op = sys.SerializeAsync(_world, cts.Token);
+                var op = sys.Serialize(_world, cts.Token);
                 Assert.That(op.Status.IsCompleted(), Is.True);
                 var result = op.GetAwaiter().GetResult();
                 Assert.That(result.IsSuccess, Is.False);
@@ -221,11 +221,11 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
-                var op1 = sys.SerializeAsync(_world);
+                var op1 = sys.Serialize(_world);
                 DriveUntilComplete(op1);
                 Assert.That(op1.GetAwaiter().GetResult().IsSuccess, Is.True);
 
-                var op2 = sys.SerializeAsync(_world);
+                var op2 = sys.Serialize(_world);
                 Assert.That(op2.Status.IsCompleted(), Is.False,
                     "Guard should be released after op1");
 
@@ -247,7 +247,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenHealth { Current = 1, Max = 1 });
 
                 var cts = new System.Threading.CancellationTokenSource();
-                var op = sys.SerializeAsync(_world, cts.Token);
+                var op = sys.Serialize(_world, cts.Token);
 
                 _group.Update();
 

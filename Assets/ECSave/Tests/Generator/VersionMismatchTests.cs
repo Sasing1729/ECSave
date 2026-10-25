@@ -81,10 +81,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 42, Max = 100 });
 
-                var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = loadSys.DeserializeAsync(_world, save.Data,
+                var load = loadSys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -114,10 +114,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 42, Max = 100 });
 
-                var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = loadSys.DeserializeAsync(_world, save.Data,
+                var load = loadSys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -146,10 +146,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 42, Max = 100 });
 
-                var save = saveSys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = saveSys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = loadSys.DeserializeAsync(_world, save.Data,
+                var load = loadSys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 

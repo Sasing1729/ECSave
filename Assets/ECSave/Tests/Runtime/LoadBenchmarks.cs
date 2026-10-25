@@ -37,7 +37,7 @@ namespace ECSave.Tests.Runtime
             for (int i = 0; i < entities.Length; i++)
                 em.SetComponentData(entities[i], new Health { Current = i, Max = 1000 });
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
             _saveData = save.Data;
 
@@ -58,7 +58,7 @@ namespace ECSave.Tests.Runtime
             // ウォームアップ（2回）
             for (int w = 0; w < 2; w++)
             {
-                var r = _system.DeserializeAsync(_world, _saveData,
+                var r = _system.Deserialize(_world, _saveData,
                     RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(r.IsSuccess, $"warmup: {r.ErrorCode}");
@@ -71,7 +71,7 @@ namespace ECSave.Tests.Runtime
             for (int it = 0; it < iterations; it++)
             {
                 sw.Restart();
-                var result = _system.DeserializeAsync(_world, _saveData,
+                var result = _system.Deserialize(_world, _saveData,
                     RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                     .GetAwaiter().GetResult();
                 sw.Stop();
@@ -99,7 +99,7 @@ namespace ECSave.Tests.Runtime
             // ウォームアップ
             for (int w = 0; w < 2; w++)
             {
-                _system.DeserializeAsync(_world, _saveData,
+                _system.Deserialize(_world, _saveData,
                     RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                     .GetAwaiter().GetResult();
             }
@@ -111,7 +111,7 @@ namespace ECSave.Tests.Runtime
 
             for (int it = 0; it < iterations; it++)
             {
-                var result = _system.DeserializeAsync(_world, _saveData,
+                var result = _system.Deserialize(_world, _saveData,
                     RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(result.IsSuccess);
@@ -136,7 +136,7 @@ namespace ECSave.Tests.Runtime
                 _world = new World("LoadBenchmarkWorld");
 
                 sw.Restart();
-                var result = _system.DeserializeAsync(_world, _saveData,
+                var result = _system.Deserialize(_world, _saveData,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 sw.Stop();
@@ -156,7 +156,7 @@ namespace ECSave.Tests.Runtime
             _world = new World("LoadBenchmarkWorld");
 
             sw.Restart();
-            var first = _system.DeserializeAsync(_world, _saveData,
+            var first = _system.Deserialize(_world, _saveData,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             sw.Stop();

@@ -46,13 +46,13 @@ namespace ECSave.Tests.Runtime
             var holder = em.CreateEntity();
             em.AddComponentData(holder, new ReferenceHolder { Target = target, Value = 42 });
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             _world.Dispose();
             _world = new World("EntityRefTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -72,13 +72,13 @@ namespace ECSave.Tests.Runtime
             var holder = em.CreateEntity();
             em.AddComponentData(holder, new ReferenceHolder { Target = Entity.Null, Value = 7 });
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EntityRefTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -100,13 +100,13 @@ namespace ECSave.Tests.Runtime
             var holder = em.CreateEntity();
             em.AddComponentData(holder, new ReferenceHolder { Target = bare, Value = 99 });
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("EntityRefTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);

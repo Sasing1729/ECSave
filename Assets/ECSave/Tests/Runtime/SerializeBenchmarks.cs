@@ -113,7 +113,7 @@ namespace ECSave.Tests.Runtime
             // ウォームアップ
             for (int w = 0; w < 2; w++)
             {
-                var r = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+                var r = _system.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(r.IsSuccess);
             }
 
@@ -124,7 +124,7 @@ namespace ECSave.Tests.Runtime
             for (int it = 0; it < iterations; it++)
             {
                 sw.Restart();
-                var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+                var result = _system.Serialize(_world).GetAwaiter().GetResult();
                 sw.Stop();
 
                 Assert.IsTrue(result.IsSuccess);

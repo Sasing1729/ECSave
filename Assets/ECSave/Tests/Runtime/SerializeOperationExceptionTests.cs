@@ -69,7 +69,7 @@ namespace ECSave.Tests.Runtime
             writer.WriteU32(0);
         }
 
-        public override void ApplySectionBody(
+        public override void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em)

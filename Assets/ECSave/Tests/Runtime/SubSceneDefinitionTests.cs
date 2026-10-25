@@ -183,7 +183,8 @@ namespace ECSave.Tests.Runtime.SubScene
         public void WithTombstoneCapacity_Negative_Throws()
         {
             var b = new SubSceneDefinitionBuilderImpl();
-            Assert.Throws<SaveRegistrationException>(() => b.WithTombstoneCapacity(-1));
+            var ex = Assert.Throws<SaveRegistrationException>(() => b.WithTombstoneCapacity(-1));
+            Assert.That(ex.Code, Is.EqualTo(RegistrationErrorCodes.NegativeTombstoneCapacity));
         }
 
         [Test]
@@ -191,7 +192,8 @@ namespace ECSave.Tests.Runtime.SubScene
         {
             var b = new SubSceneDefinitionBuilderImpl();
             b.WithTombstoneCapacity(100);
-            Assert.Throws<SaveRegistrationException>(() => b.WithTombstoneCapacity(200));
+            var ex = Assert.Throws<SaveRegistrationException>(() => b.WithTombstoneCapacity(200));
+            Assert.That(ex.Code, Is.EqualTo(RegistrationErrorCodes.ConflictingSetting));
         }
 
         [Test]
@@ -216,8 +218,9 @@ namespace ECSave.Tests.Runtime.SubScene
         public void WithContentVerification_InvalidMode_Throws()
         {
             var b = new SubSceneDefinitionBuilderImpl();
-            Assert.Throws<SaveRegistrationException>(
+            var ex = Assert.Throws<SaveRegistrationException>(
                 () => b.WithContentVerification((ContentVerificationMode)99));
+            Assert.That(ex.Code, Is.EqualTo(RegistrationErrorCodes.InvalidEnumValue));
         }
 
         [Test]
@@ -225,8 +228,9 @@ namespace ECSave.Tests.Runtime.SubScene
         {
             var b = new SubSceneDefinitionBuilderImpl();
             b.WithContentVerification(ContentVerificationMode.GuidOnly);
-            Assert.Throws<SaveRegistrationException>(
+            var ex = Assert.Throws<SaveRegistrationException>(
                 () => b.WithContentVerification(ContentVerificationMode.GuidAndContentHash));
+            Assert.That(ex.Code, Is.EqualTo(RegistrationErrorCodes.ConflictingSetting));
         }
 
         [TestCase(StreamingConsistencyMode.TimeBased)]
@@ -242,8 +246,9 @@ namespace ECSave.Tests.Runtime.SubScene
         public void WithStreamingConsistency_InvalidMode_Throws()
         {
             var b = new SubSceneDefinitionBuilderImpl();
-            Assert.Throws<SaveRegistrationException>(
+            var ex = Assert.Throws<SaveRegistrationException>(
                 () => b.WithStreamingConsistency((StreamingConsistencyMode)99));
+            Assert.That(ex.Code, Is.EqualTo(RegistrationErrorCodes.InvalidEnumValue));
         }
 
         [Test]
@@ -335,12 +340,56 @@ namespace ECSave.Tests.Runtime.SubScene
         [Test]
         public void Codes_HaveExpectedValues()
         {
-            Assert.That(SubSceneRegistrationErrorCodes.ConfigDuplicate, Is.EqualTo("ECSAVE-R020"));
-            Assert.That(SubSceneRegistrationErrorCodes.TombstoneWithoutIdentity, Is.EqualTo("ECSAVE-R021"));
-            Assert.That(SubSceneRegistrationErrorCodes.ConflictingSetting, Is.EqualTo("ECSAVE-R022"));
-            Assert.That(SubSceneRegistrationErrorCodes.NegativeTombstoneCapacity, Is.EqualTo("ECSAVE-R023"));
-            Assert.That(SubSceneRegistrationErrorCodes.InvalidEnumValue, Is.EqualTo("ECSAVE-R024"));
-            Assert.That(SubSceneRegistrationErrorCodes.MissingProvider, Is.EqualTo("ECSAVE-R025"));
+            // 命名規約: すべて "ECSAVERNNN" 形式（英字 + 数字のみ）。
+            // ハイフン等の記号はログ集約・監視・テスト検証で問題を起こすため禁止。
+            // 値は RegistrationErrorCodes の SubScene ブロックと一致させること。
+            Assert.That(SubSceneRegistrationErrorCodes.ConfigDuplicate, Is.EqualTo("ECSAVER020"));
+            Assert.That(SubSceneRegistrationErrorCodes.TombstoneWithoutIdentity, Is.EqualTo("ECSAVER021"));
+            Assert.That(SubSceneRegistrationErrorCodes.ConflictingSetting, Is.EqualTo("ECSAVER022"));
+            Assert.That(SubSceneRegistrationErrorCodes.NegativeTombstoneCapacity, Is.EqualTo("ECSAVER023"));
+            Assert.That(SubSceneRegistrationErrorCodes.InvalidEnumValue, Is.EqualTo("ECSAVER024"));
+            Assert.That(SubSceneRegistrationErrorCodes.MissingProvider, Is.EqualTo("ECSAVER025"));
+        }
+
+        [Test]
+        public void Codes_HaveNoHyphen()
+        {
+            // 再発防止: エラーコードにハイフン等の記号を含めないこと。
+            // Roslyn の診断 ID 規約（^[a-zA-Z][a-zA-Z0-9]*$）に準拠させ、
+            // 実行時例外コードと Roslyn 診断 ID を同じ形式で扱えるようにする。
+            var codes = new[]
+            {
+                SubSceneRegistrationErrorCodes.ConfigDuplicate,
+                SubSceneRegistrationErrorCodes.TombstoneWithoutIdentity,
+                SubSceneRegistrationErrorCodes.ConflictingSetting,
+                SubSceneRegistrationErrorCodes.NegativeTombstoneCapacity,
+                SubSceneRegistrationErrorCodes.InvalidEnumValue,
+                SubSceneRegistrationErrorCodes.MissingProvider,
+            };
+            foreach (var c in codes)
+            {
+                Assert.That(c, Does.Match(@"^[A-Za-z][A-Za-z0-9]*$"),
+                    $"Error code '{c}' must contain only alphanumeric characters (no hyphens or symbols).");
+            }
+        }
+
+        [Test]
+        public void Codes_MatchRegistrationErrorCodes()
+        {
+            // SubSceneRegistrationErrorCodes は RegistrationErrorCodes のエイリアス。
+            // 値の二重管理を避けるため、両者が一致していることを検証する。
+            Assert.That(SubSceneRegistrationErrorCodes.ConfigDuplicate,
+                Is.EqualTo(RegistrationErrorCodes.SubSceneConfigDuplicate));
+            Assert.That(SubSceneRegistrationErrorCodes.TombstoneWithoutIdentity,
+                Is.EqualTo(RegistrationErrorCodes.TombstoneWithoutIdentity));
+            Assert.That(SubSceneRegistrationErrorCodes.ConflictingSetting,
+                Is.EqualTo(RegistrationErrorCodes.ConflictingSetting));
+            Assert.That(SubSceneRegistrationErrorCodes.NegativeTombstoneCapacity,
+                Is.EqualTo(RegistrationErrorCodes.NegativeTombstoneCapacity));
+            Assert.That(SubSceneRegistrationErrorCodes.InvalidEnumValue,
+                Is.EqualTo(RegistrationErrorCodes.InvalidEnumValue));
+            Assert.That(SubSceneRegistrationErrorCodes.MissingProvider,
+                Is.EqualTo(RegistrationErrorCodes.MissingProvider));
         }
     }
 }

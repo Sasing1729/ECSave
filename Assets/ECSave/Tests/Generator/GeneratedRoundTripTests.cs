@@ -53,7 +53,7 @@ namespace ECSave.Tests.Generator
                     em.AddComponentData(e, new GenHealth { Current = i * 10, Max = 100 });
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
 #if UNITY_EDITOR
@@ -68,7 +68,7 @@ namespace ECSave.Tests.Generator
                 _world.Dispose();
                 _world = new World("GenTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -116,13 +116,13 @@ namespace ECSave.Tests.Generator
                         em.SetComponentEnabled<GenStunned>(entities[i], false);
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("GenTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -173,13 +173,13 @@ namespace ECSave.Tests.Generator
                 buf.Add(new GenInventoryItem { ItemId = 20, Count = 2 });
                 buf.Add(new GenInventoryItem { ItemId = 30, Count = 3 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("GenTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");
@@ -226,13 +226,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(holder, new GenPlayerId { Value = 2 });
                 em.AddComponentData(holder, new GenRef { Target = target, Value = 42 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("GenTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");

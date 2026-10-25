@@ -144,13 +144,13 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new PlayerId { Value = 1 });
                 em.AddComponentData(e, new Health { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("ScopeTestWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");

@@ -57,7 +57,7 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(a, new PlayerId { Value = 1 });
             em.AddComponentData(a, new Health { Current = 100, Max = 200 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -66,7 +66,7 @@ namespace ECSave.Tests.Runtime
             em2.AddComponentData(a2, new PlayerId { Value = 1 });
             em2.AddComponentData(a2, new Health { Current = 10, Max = 20 });
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -87,7 +87,7 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(a, new PlayerId { Value = 1 });
             em.AddComponentData(a, new Health { Current = 100, Max = 200 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -97,7 +97,7 @@ namespace ECSave.Tests.Runtime
             em2.AddComponentData(a2, new Health { Current = 10, Max = 20 });
 
             var scope = RestorationScope.Custom(PlayerIdQuery(em2));
-            var load = sys.DeserializeAsync(_world, save.Data, scope, DeletionPolicy.ByRegistration)
+            var load = sys.Deserialize(_world, save.Data, scope, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
 
@@ -116,7 +116,7 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(a, new PlayerId { Value = 1 });
             em.AddComponentData(a, new Health { Current = 100, Max = 200 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -137,7 +137,7 @@ namespace ECSave.Tests.Runtime
             var scopeQuery = em2.CreateEntityQuery(typeof(PlayerOnlyFilter));
             var scope = RestorationScope.Custom(scopeQuery);
 
-            var load = sys.DeserializeAsync(_world, save.Data, scope, DeletionPolicy.None)
+            var load = sys.Deserialize(_world, save.Data, scope, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Load failed: {load.ErrorCode}");
 
@@ -173,7 +173,7 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(a, new PlayerId { Value = 1 });
             em.AddComponentData(a, new Health { Current = 100, Max = 200 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -193,7 +193,7 @@ namespace ECSave.Tests.Runtime
             var scopeQuery = em2.CreateEntityQuery(typeof(PlayerOnlyFilter));
             var scope = RestorationScope.Custom(scopeQuery);
 
-            var load = sys.DeserializeAsync(_world, save.Data, scope, DeletionPolicy.None)
+            var load = sys.Deserialize(_world, save.Data, scope, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
             Assert.IsTrue(load.IsSuccess,
@@ -212,7 +212,7 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(a, new PlayerId { Value = 1 });
             em.AddComponentData(a, new Health { Current = 100, Max = 200 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -227,7 +227,7 @@ namespace ECSave.Tests.Runtime
             var b2 = em2.CreateEntity();
             em2.AddComponentData(b2, new PlayerId { Value = 1 });
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 

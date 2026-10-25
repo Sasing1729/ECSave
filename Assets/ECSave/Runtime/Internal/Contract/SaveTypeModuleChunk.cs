@@ -5,6 +5,31 @@ using Unity.Entities;
 
 namespace ECSave.Internal
 {
+    /// <summary>
+    /// チャンクコンポーネント（<c>ComponentType.ChunkComponentReadOnly&lt;T&gt;()</c>）のモジュール。
+    ///
+    /// <para>
+    /// <b>チャンクコンポーネントの特性</b>: 値はチャンク（Archetype）単位で共有される。
+    /// 同じチャンクに属する複数 Entity は同じ値を持つ。
+    /// </para>
+    /// <para>
+    /// <b>復元</b>: <see cref="RestoreSection"/> で各メンバー Entity に ChunkComponent を
+    /// 付与（存在確保）し、<see cref="RestoreChunks"/> で代表メンバーを通じて値を書き込む
+    /// （2 フェーズ構成）。
+    /// </para>
+    /// <para>
+    /// <b>Chunk のみを持つ Entity の復元</b>:
+    /// <c>P3_EntityGenerationPhase</c> は ChunkComponent セクションの
+    /// <c>MemberEntityIndex</c> から pid を収集し、Entity を生成する。
+    /// したがって「ChunkComponent のみを持つ Entity」（他コンポーネントを持たない）も
+    /// ロード時に正しく復元される。
+    /// </para>
+    /// <para>
+    /// <b>旧仕様</b>: 以前は Chunk のみ Entity は生成されず、値も復元されなかった。
+    /// その挙動は <c>LoadWarningKind.ChunkComponentEntityMissing</c> 警告として可視化されていた。
+    /// 現在は復元が実装され、警告は「復元失敗の回帰検出」として維持されている。
+    /// </para>
+    /// </summary>
     public abstract class SaveTypeModuleChunk<T> : SaveTypeModule, SaveTypeModuleChunkMarker
         where T : unmanaged, IComponentData
     {
@@ -44,14 +69,23 @@ namespace ECSave.Internal
         }
 
         public override unsafe void FilterAfterIdOf(
-            ref SnapshotBuffer buffer, NativeParallelHashMap<Entity, int> idOf)
+    ref SnapshotBuffer buffer,
+    NativeParallelHashMap<Entity, int> idOf)
         {
             if (!buffer.HasChunkMembers) return;
+
+            UnityEngine.Debug.Log(
+                $"[ChunkFilter] BEGIN " +
+                $"Groups={buffer.ChunkMemberOffsets.Length - 1} " +
+                $"Members={buffer.ChunkMemberEntities.Length} " +
+                $"Entities={buffer.Entities.Length} " +
+                $"Values={buffer.Values.Length}");
 
             var newValues = new NativeList<byte>(buffer.Values.Length, Allocator.TempJob);
             var newEntities = new NativeList<Entity>(buffer.Entities.Length, Allocator.TempJob);
             var newMembers = new NativeList<Entity>(buffer.ChunkMemberEntities.Length, Allocator.TempJob);
             var newOffsets = new NativeList<int>(buffer.ChunkMemberOffsets.Length, Allocator.TempJob);
+
             newOffsets.Add(0);
 
             int stride = buffer.Stride;
@@ -62,22 +96,67 @@ namespace ECSave.Internal
                 int start = buffer.ChunkMemberOffsets[c];
                 int end = buffer.ChunkMemberOffsets[c + 1];
 
+                UnityEngine.Debug.Log(
+                    $"[ChunkFilter] Group={c} Start={start} End={end}");
+
                 int memberCount = 0;
+
                 for (int i = start; i < end; i++)
-                    if (idOf.ContainsKey(buffer.ChunkMemberEntities[i])) memberCount++;
-                if (memberCount == 0) continue;
+                {
+                    var entity = buffer.ChunkMemberEntities[i];
+
+                    bool existsInIdOf = idOf.ContainsKey(entity);
+
+                    UnityEngine.Debug.Log(
+                        $"[ChunkFilter]   Member[{i}] " +
+                        $"Entity={entity} " +
+                        $"InIdOf={existsInIdOf}");
+
+                    if (existsInIdOf)
+                        memberCount++;
+                }
+
+                UnityEngine.Debug.Log(
+                    $"[ChunkFilter] Group={c} MatchedMembers={memberCount}");
+
+                if (memberCount == 0)
+                {
+                    UnityEngine.Debug.LogWarning(
+                        $"[ChunkFilter] DROPPED " +
+                        $"Group={c} " +
+                        $"Start={start} End={end} " +
+                        $"Reason=NoMembersInIdOf");
+
+                    continue;
+                }
 
                 byte* src = vptr + c * stride;
-                for (int b = 0; b < stride; b++) newValues.Add(src[b]);
+
+                for (int b = 0; b < stride; b++)
+                    newValues.Add(src[b]);
+
                 newEntities.Add(buffer.Entities[c]);
 
                 for (int i = start; i < end; i++)
                 {
                     var e = buffer.ChunkMemberEntities[i];
-                    if (idOf.ContainsKey(e)) newMembers.Add(e);
+
+                    if (idOf.ContainsKey(e))
+                    {
+                        newMembers.Add(e);
+
+                        UnityEngine.Debug.Log(
+                            $"[ChunkFilter]   KEEP Entity={e}");
+                    }
                 }
+
                 newOffsets.Add(newMembers.Length);
             }
+
+            UnityEngine.Debug.Log(
+                $"[ChunkFilter] END " +
+                $"Groups={newOffsets.Length - 1} " +
+                $"Members={newMembers.Length}");
 
             buffer.Values.Dispose();
             buffer.Entities.Dispose();
@@ -142,7 +221,27 @@ namespace ECSave.Internal
             }
         }
 
-        public override unsafe void ApplySectionBody(
+        /// <summary>
+        /// ChunkComponent セクションの復元（<b>フェーズ 1/2</b>: 存在確保のみ）。
+        ///
+        /// <para>
+        /// <b>命名について</b>: メソッド名は基底クラスから継承した <c>RestoreSection</c>。
+        /// 基底クラスの他の実装（Component / Buffer / Shared / Identity）は値を書き込むが、
+        /// ChunkComponent は <b>チャンクコンポーネントの存在確保のみ</b> を行う。
+        /// 値の書き込みは <b>フェーズ 2</b> の <see cref="RestoreChunks"/> で行う。
+        /// </para>
+        /// <para>
+        /// <b>2 フェーズ構成の理由</b>: ChunkComponent はチャンク（Archetype）単位で値を持ち、
+        /// 書き込みにはメンバー Entity が 1 つ以上存在する必要がある。フェーズ 1 で全メンバーに
+        /// ChunkComponent の存在を保証し、フェーズ 2 で代表メンバーを通じて値を書き込む。
+        /// </para>
+        /// <para>
+        /// <b>Entity の生成</b>: メンバー Entity の生成は <c>P3_EntityGenerationPhase</c> が
+        /// 責務を持つ。本メソッドは <c>persistentToEntity[pid]</c> で解決済みの Entity にのみ
+        /// ChunkComponent を付与する。解決できない pid はスキップする。
+        /// </para>
+        /// </summary>
+        public override unsafe void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em)
@@ -280,14 +379,39 @@ namespace ECSave.Internal
             }
         }
 
+        /// <summary>
+        /// ChunkComponent セクションの復元（<b>フェーズ 2/2</b>: 値の書き込み）。
+        ///
+        /// <para>
+        /// <b>フェーズ 1 との関係</b>: <see cref="RestoreSection"/> で全メンバーに
+        /// ChunkComponent の存在を確保した後、本メソッドで代表メンバーを通じて値を書き込む。
+        /// </para>
+        /// <para>
+        /// <b>P1 追加引数</b>: <paramref name="missingEntityCount"/> と
+        /// <paramref name="firstMissingPid"/> は、ChunkComponent セクションに現れた pid のうち
+        /// <c>persistentToEntity[pid] == Entity.Null</c> だったものの件数と先頭 pid。
+        /// 呼び出し側（<see cref="P6_ChunkComponentRestorePhase"/>）が
+        /// <see cref="LoadWarningKind.ChunkComponentEntityMissing"/> 警告を発火するために使う。
+        /// </para>
+        /// <para>
+        /// <b>通常は 0 件</b>: <c>P3_EntityGenerationPhase</c> が全メンバー pid の Entity を
+        /// 生成するため、通常ケースでは <c>missingEntityCount == 0</c>。
+        /// 0 件なら警告は出さない。
+        /// </para>
+        /// </summary>
         public unsafe SaveLoadErrorCode RestoreChunks(
             in ChunkComponentSectionView view,
             int groupCount,
             int stride,
             NativeArray<Entity> persistentToEntity,
             EntityManager em,
-            ref bool merged)
+            ref bool merged,
+            out int missingEntityCount,
+            out int firstMissingPid)
         {
+            missingEntityCount = 0;
+            firstMissingPid = -1;
+
             int memberCount = (int)view.MemberOffset[groupCount];
             var entityToPid = new NativeParallelHashMap<Entity, int>(
                 memberCount > 0 ? memberCount : 16, Allocator.TempJob);
@@ -315,6 +439,15 @@ namespace ECSave.Internal
                         for (int k = start; k < end; k++)
                         {
                             uint pid = view.MemberEntityIndex[k];
+                            if (pid >= (uint)persistentToEntity.Length) continue;
+
+                            if (persistentToEntity[(int)pid] == Entity.Null)
+                            {
+                                if (firstMissingPid < 0) firstMissingPid = (int)pid;
+                                missingEntityCount++;
+                                continue;
+                            }
+
                             if (pid < (uint)entityIndexToGroup.Length)
                                 entityIndexToGroup[(int)pid] = g;
                         }
@@ -434,5 +567,23 @@ namespace ECSave.Internal
             }
             return best;
         }
+    }
+
+    /// <summary>
+    /// <see cref="SaveTypeModuleChunk{T}"/> の型消去用マーカー。
+    /// <see cref="P6_ChunkComponentRestorePhase"/> から呼び出せるよう、
+    /// 非ジェネリックで <c>RestoreChunks</c> を公開する。
+    /// </summary>
+    internal interface SaveTypeModuleChunkMarker
+    {
+        SaveLoadErrorCode RestoreChunks(
+            in ChunkComponentSectionView view,
+            int groupCount,
+            int stride,
+            NativeArray<Entity> persistentToEntity,
+            EntityManager em,
+            ref bool merged,
+            out int missingEntityCount,
+            out int firstMissingPid);
     }
 }

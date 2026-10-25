@@ -77,7 +77,7 @@ namespace ECSave.Tests.Runtime
         {
             var sys = new SaveSystem(new SaveDefinition(modules, 1, WorldName));
             populate(_world.EntityManager);
-            var r = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var r = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(r.IsSuccess, $"Serialize failed: {r.ErrorCode}");
             return r.Data;
         }
@@ -92,7 +92,7 @@ namespace ECSave.Tests.Runtime
         }
 
         private LoadResult Load(SaveSystem sys, byte[] data)
-            => sys.DeserializeAsync(_world, data,
+            => sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
 
@@ -198,7 +198,7 @@ namespace ECSave.Tests.Runtime
             }
 
             // 3. 移行後のデータを再保存
-            var saveMigrated = sysMigrated.SerializeAsync(_world).GetAwaiter().GetResult();
+            var saveMigrated = sysMigrated.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(saveMigrated.IsSuccess, $"Re-save failed: {saveMigrated.ErrorCode}");
 
             // 4. RenamedFrom 未登録の SaveDefinition で再ロード
@@ -252,7 +252,7 @@ namespace ECSave.Tests.Runtime
             var load1 = Load(sysMigrated, dataOld);
             Assert.IsTrue(load1.IsSuccess, $"Migration load failed: {load1.ErrorCode}");
 
-            var resaved = sysMigrated.SerializeAsync(_world).GetAwaiter().GetResult();
+            var resaved = sysMigrated.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(resaved.IsSuccess);
 
             // 再保存データは「新名 + 新レイアウト」になっている。
@@ -341,7 +341,7 @@ namespace ECSave.Tests.Runtime
             var impl = new SaveDefinitionBuilderImpl();
             var ex = Assert.Throws<SaveRegistrationException>(
                 () => impl.RegisterComponent<Health>().RenamedFrom(NewName));
-            Assert.AreEqual("ECSAVE-R006", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.RenamedFromSameAsCurrent, ex.Code);
         }
 
         [Test]
@@ -352,7 +352,7 @@ namespace ECSave.Tests.Runtime
             var impl = new SaveDefinitionBuilderImpl();
             var ex = Assert.Throws<SaveRegistrationException>(
                 () => impl.RegisterComponent<Health>().RenamedFrom("Game.Domain+Health"));
-            Assert.AreEqual("ECSAVE-R006", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.RenamedFromSameAsCurrent, ex.Code);
         }
 
         [Test]
@@ -362,7 +362,7 @@ namespace ECSave.Tests.Runtime
             impl.RegisterComponent<Health>().RenamedFrom("Old.Shared");
             var ex = Assert.Throws<SaveRegistrationException>(
                 () => impl.RegisterComponent<HealthV1>().RenamedFrom("Old.Shared"));
-            Assert.AreEqual("ECSAVE-R007", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.RenamedFromConflict, ex.Code);
         }
 
         [Test]
@@ -373,7 +373,7 @@ namespace ECSave.Tests.Runtime
             impl.RegisterComponent<Health>().RenamedFrom("Old+Shared");
             var ex = Assert.Throws<SaveRegistrationException>(
                 () => impl.RegisterComponent<HealthV1>().RenamedFrom("Old.Shared"));
-            Assert.AreEqual("ECSAVE-R007", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.RenamedFromConflict, ex.Code);
         }
 
         [Test]
@@ -391,7 +391,7 @@ namespace ECSave.Tests.Runtime
         public void Builder_SamePairMixedFormat_IsIdempotent()
         {
             // B-8: "Old+A" と "Old.A" は正規化後に同一ペアと判定され、
-            // 二重登録例外（ECSAVE-R007）にならない。
+            // 二重登録例外（ECSAVER007）にならない。
             var impl = new SaveDefinitionBuilderImpl();
             impl.RegisterComponent<Health>().RenamedFrom("Old+A").RenamedFrom("Old.A");
 

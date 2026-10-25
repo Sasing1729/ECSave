@@ -12,7 +12,7 @@ namespace ECSave.Internal
         public const byte CodecLz4 = 1;
         public const int MinCompressLength = 256;
 
-        // Review #12d: 圧縮爆弾対策の絶対上限。
+        // 圧縮爆弾対策の絶対上限。
         public const int MaxRawLength = 256 * 1024 * 1024;
 
         private const long MaxRatio = 255;
@@ -23,9 +23,28 @@ namespace ECSave.Internal
         public static bool IsCompressed(byte[] d)
             => d != null && d.Length >= EnvelopeSize && ReadU32(d, 0) == Magic;
 
+        /// <summary>
+        /// 配列入力からの圧縮。
+        ///
+        /// <para>
+        /// <b>参照同一性の契約</b>: 圧縮が不要または有益でない場合、
+        /// <b>入力配列そのもの</b>を返す。呼び出し側は
+        /// <c>ReferenceEquals(input, output)</c> で「圧縮されなかった」ことを検出できる。
+        /// </para>
+        /// <para>
+        /// <b>null</b>: <c>null</c> を返す（呼び出し側の null チェックと一貫）。
+        /// </para>
+        /// <para>
+        /// <b>P2a での失敗</b>: 一度 <see cref="Compress(byte*, int)"/> へ委譲する形に
+        /// リファクタリングしたが、参照同一性契約を壊したため元に戻した。
+        /// 本メソッドと <see cref="Compress(byte*, int)"/> は異なる契約を持つため、
+        /// 完全な共通化はできない（エンベロープ構築のみ <see cref="BuildEnvelope"/> に共通化）。
+        /// </para>
+        /// </summary>
         public static byte[] Compress(byte[] raw)
         {
-            if (raw == null || raw.Length < MinCompressLength) return raw;
+            if (raw == null) return null;
+            if (raw.Length < MinCompressLength) return raw;
 
             int bound = Lz4Block.MaxCompressedSize(raw.Length);
             using var tmp = new NativeArray<byte>(
@@ -37,21 +56,7 @@ namespace ECSave.Internal
 
             if (n < 0 || n + EnvelopeSize >= raw.Length) return raw;
 
-            var result = new byte[n + EnvelopeSize];
-            result[0] = 0x45;
-            result[1] = 0x43;
-            result[2] = 0x53;
-            result[3] = 0x5A;
-            result[4] = CodecLz4;
-            uint len = (uint)raw.Length;
-            result[8] = (byte)len;
-            result[9] = (byte)(len >> 8);
-            result[10] = (byte)(len >> 16);
-            result[11] = (byte)(len >> 24);
-
-            fixed (byte* d = result)
-                UnsafeUtility.MemCpy(d + EnvelopeSize, tmp.GetUnsafePtr(), n);
-            return result;
+            return BuildEnvelope((byte*)tmp.GetUnsafePtr(), n, raw.Length);
         }
 
         /// <summary>
@@ -65,6 +70,15 @@ namespace ECSave.Internal
         /// <para>
         /// 本オーバーロードは生の <c>byte*</c> を入力に取り、圧縮が有益な場合は
         /// 直接圧縮結果を返す。中間配列は圧縮が有益でない場合のみ確保する。
+        /// </para>
+        /// <para>
+        /// <b>参照同一性は保証されない</b>: 入力がポインタであるため、
+        /// 非圧縮時は新しい配列を確保してコピーする。
+        /// 参照同一性が必要な場合は <see cref="Compress(byte[])"/> を使うこと。
+        /// </para>
+        /// <para>
+        /// <b>null</b>: <c>Array.Empty&lt;byte&gt;()</c> を返す（ポインタ版は呼び出し側が
+        /// 空を渡すことは想定しないが、防御的に空配列を返す）。
         /// </para>
         /// </summary>
         public static byte[] Compress(byte* src, int srcLength)
@@ -94,20 +108,28 @@ namespace ECSave.Internal
                 return raw;
             }
 
-            var result = new byte[n + EnvelopeSize];
+            return BuildEnvelope((byte*)tmp.GetUnsafePtr(), n, srcLength);
+        }
+
+        /// <summary>
+        /// 圧縮済みバイト列にエンベロープヘッダを付加した <c>byte[]</c> を生成する。
+        /// </summary>
+        private static byte[] BuildEnvelope(byte* compressed, int compressedLen, int rawLength)
+        {
+            var result = new byte[compressedLen + EnvelopeSize];
             result[0] = 0x45;
             result[1] = 0x43;
             result[2] = 0x53;
             result[3] = 0x5A;
             result[4] = CodecLz4;
-            uint len = (uint)srcLength;
+            uint len = (uint)rawLength;
             result[8] = (byte)len;
             result[9] = (byte)(len >> 8);
             result[10] = (byte)(len >> 16);
             result[11] = (byte)(len >> 24);
 
             fixed (byte* d = result)
-                UnsafeUtility.MemCpy(d + EnvelopeSize, tmp.GetUnsafePtr(), n);
+                UnsafeUtility.MemCpy(d + EnvelopeSize, compressed, compressedLen);
             return result;
         }
 

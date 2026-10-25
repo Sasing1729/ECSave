@@ -63,13 +63,13 @@ namespace ECSave.Tests.Runtime
             em.AddComponentData(e, new PlayerId { Value = 1 });
             em.AddComponentData(e, new Health { Current = 10, Max = 20 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("PhaseBWorld");
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);
@@ -124,7 +124,7 @@ namespace ECSave.Tests.Runtime
 
             SubSceneTombstone.MarkDestroyed(em, new PlayerId { Value = 2 });
 
-            var save1 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save1 = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save1.IsSuccess);
 
             _world.Dispose();
@@ -132,7 +132,7 @@ namespace ECSave.Tests.Runtime
 
             SubSceneTombstone.MarkDestroyed(_world.EntityManager, new PlayerId { Value = 2 });
 
-            var load = sys.DeserializeAsync(_world, save1.Data,
+            var load = sys.Deserialize(_world, save1.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Load failed: {load.ErrorCode}");
@@ -174,7 +174,7 @@ namespace ECSave.Tests.Runtime
             em0.AddComponentData(e, new PlayerId { Value = 1 });
             em0.AddComponentData(e, new Health { Current = 10, Max = 20 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             // Tombstone セクションが保存されていることを事前確認
@@ -201,7 +201,7 @@ namespace ECSave.Tests.Runtime
                 SubSceneTombstoneRegistry.TryGetSingleton(_world.EntityManager, out _),
                 "Precondition: registry must not exist in the new World");
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByScope)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Load failed: {load.ErrorCode}");
@@ -233,7 +233,7 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new GenHealth { Current = 10, Max = 20 });
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 // Tombstone セクションが書かれていることを確認
@@ -275,7 +275,7 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new PlayerId { Value = 1 });
                 em.AddComponentData(e, new Health { Current = 10, Max = 20 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
@@ -284,7 +284,7 @@ namespace ECSave.Tests.Runtime
                 using var cts = new System.Threading.CancellationTokenSource();
                 cts.Cancel();
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration, cts.Token)
                     .GetAwaiter().GetResult();
 
@@ -316,7 +316,7 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new PlayerId { Value = 1 });
                 em.AddComponentData(e, new Health { Current = 10, Max = 20 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
@@ -325,7 +325,7 @@ namespace ECSave.Tests.Runtime
                 FaultInjector.Current = new NamedFaultInjector("P3");
                 try
                 {
-                    var load = sys.DeserializeAsync(_world, save.Data,
+                    var load = sys.Deserialize(_world, save.Data,
                         RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                         .GetAwaiter().GetResult();
 

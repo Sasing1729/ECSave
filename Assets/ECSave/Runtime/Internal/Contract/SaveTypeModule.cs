@@ -50,8 +50,40 @@ namespace ECSave.Internal
         public abstract void WriteSectionBody(
             ref FormatWriter writer, in SnapshotBuffer buffer,
             NativeParallelHashMap<Entity, int> idOf);
-        public abstract void ApplySectionBody(
-            ByteView sectionBody, NativeArray<Entity> persistentToEntity, EntityManager em);
+
+        /// <summary>
+        /// セクションを World に復元する。
+        ///
+        /// <para>
+        /// <b>実装ごとの契約</b>:
+        /// <list type="bullet">
+        ///   <item>
+        ///     Component / Buffer / Shared / Identity —
+        ///     セクションの値を各 Entity に書き込む。
+        ///   </item>
+        ///   <item>
+        ///     ChunkComponent —
+        ///     <b>チャンクコンポーネントの存在確保のみ</b> を行う。値の書き込みは
+        ///     別途 <see cref="SaveTypeModuleChunkMarker.RestoreChunks"/> で行われる（2 フェーズ構成）。
+        ///     詳細は <see cref="SaveTypeModuleChunk{T}.RestoreSection"/> を参照。
+        ///   </item>
+        /// </list>
+        /// </para>
+        /// <para>
+        /// <b>呼び出し順</b>: <c>DeserializeOperation</c> の P3〜P4 フェーズで、
+        /// <see cref="SaveTypeModuleChunkMarker.RestoreChunks"/> より先に呼ばれる。
+        /// </para>
+        /// <para>
+        /// <b>命名の経緯</b>: 旧名 <c>ApplySectionBody</c> は "Apply" が値の適用を強く連想させ、
+        /// ChunkComponent の「存在確保のみ」と意味が食い違っていた。
+        /// <c>RestoreSection</c> は「セーブデータから復元する」という文脈に沿い、
+        /// 構造復元も値復元も包含できる。
+        /// </para>
+        /// </summary>
+        public abstract void RestoreSection(
+            ByteView sectionBody,
+            NativeArray<Entity> persistentToEntity,
+            EntityManager em);
 
         public virtual void FilterAfterIdOf(
             ref SnapshotBuffer buffer, NativeParallelHashMap<Entity, int> idOf)

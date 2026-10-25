@@ -43,7 +43,7 @@ namespace ECSave.Tests.Runtime
         public void Serialize_InternalBreakdown()
         {
             for (int w = 0; w < 3; w++)
-                _system.SerializeAsync(_world).GetAwaiter().GetResult();
+                _system.Serialize(_world).GetAwaiter().GetResult();
 
             const int iterations = 10;
 
@@ -52,7 +52,7 @@ namespace ECSave.Tests.Runtime
 
             for (int it = 0; it < iterations; it++)
             {
-                var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+                var result = _system.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(result.IsSuccess);
             }
 

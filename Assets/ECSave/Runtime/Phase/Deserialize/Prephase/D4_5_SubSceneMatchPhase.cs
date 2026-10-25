@@ -11,7 +11,29 @@ namespace ECSave.Phase.Deserialize.Prephase
     internal static unsafe class D4_5_SubSceneMatchPhase
     {
         /// <summary>
-        /// 検証付き版。Warnings を渡すとコンテンツハッシュ不一致時に SceneContentHashMismatch を追加する。
+        /// 検証付き版。<paramref name="warnings"/> を渡すと、
+        /// <see cref="ContentVerificationMode.GuidOnly"/> /
+        /// <see cref="ContentVerificationMode.GuidAndContentHash"/> の指定に応じて
+        /// GUID/State の一致検証と ContentHash の一致検証を行う。
+        ///
+        /// <para>
+        /// <b>検証モードごとの動作</b>:
+        /// <list type="bullet">
+        ///   <item><c>None</c>: 検証なし</item>
+        ///   <item>
+        ///     <c>GuidOnly</c>: 保存時と現在の GUID および <see cref="SceneLoadState"/> を比較。
+        ///     不一致なら <see cref="LoadWarningKind.SceneLoadStateMismatch"/> を記録。
+        ///     <see cref="SceneLoadState.Loading"/> は一時状態のため比較対象外。
+        ///     <see cref="SceneLoadInfo.ContentHash"/> は **検証しない**
+        ///     （計算コストを払わない中間モード）。
+        ///   </item>
+        ///   <item>
+        ///     <c>GuidAndContentHash</c>: 上記に加え、
+        ///     <see cref="SceneLoadInfo.ContentHash"/> も比較。
+        ///     不一致なら <see cref="LoadWarningKind.SceneContentHashMismatch"/> を記録。
+        ///   </item>
+        /// </list>
+        /// </para>
         /// </summary>
         public static SaveLoadErrorCode Execute(
             SubSceneDefinition def,
@@ -54,8 +76,17 @@ namespace ECSave.Phase.Deserialize.Prephase
                 parsed = view;
                 hasSubSceneSection = true;
 
-                if (def.ContentVerification == ContentVerificationMode.GuidAndContentHash)
-                    VerifyContentHashes(def, view, warnings);
+                switch (def.ContentVerification)
+                {
+                    case ContentVerificationMode.GuidOnly:
+                        VerifyGuidsAndStates(def, view, warnings);
+                        break;
+
+                    case ContentVerificationMode.GuidAndContentHash:
+                        VerifyGuidsAndStates(def, view, warnings);
+                        VerifyContentHashes(def, view, warnings);
+                        break;
+                }
 
                 return SaveLoadErrorCode.None;
             }
@@ -81,6 +112,86 @@ namespace ECSave.Phase.Deserialize.Prephase
             finally { dummy.Dispose(); }
         }
 
+        /// <summary>
+        /// GUID と <see cref="SceneLoadState"/> の一致検証。
+        ///
+        /// <para>
+        /// <b>検証の内容</b>:
+        /// <list type="bullet">
+        ///   <item>保存時に存在した GUID が現在の Provider に無い → 警告</item>
+        ///   <item>両方に存在するが State が異なる → 警告</item>
+        ///   <item>どちらかが <see cref="SceneLoadState.Loading"/> → 比較対象外
+        ///         （一時状態のため）</item>
+        /// </list>
+        /// </para>
+        /// <para>
+        /// <b>警告の種類</b>: <see cref="LoadWarningKind.SceneLoadStateMismatch"/>。
+        /// この enum は <c>GuidOnly</c> の実装に伴い、本来の用途で使用される。
+        /// </para>
+        /// </summary>
+        private static void VerifyGuidsAndStates(
+            SubSceneDefinition def,
+            in SubSceneStateSectionView saved,
+            WarningCollector warnings)
+        {
+            if (def.SceneStateProvider == null) return;
+            if (saved.Count == 0) return;
+
+            IReadOnlyList<SceneLoadInfo> current;
+            try
+            {
+                current = def.SceneStateProvider() ?? Array.Empty<SceneLoadInfo>();
+            }
+            catch
+            {
+                return;
+            }
+
+            // GUID → 現在の State
+            var currentStates = new Dictionary<SceneGuid, SceneLoadState>(current.Count);
+            for (int i = 0; i < current.Count; i++)
+            {
+                var s = current[i];
+                currentStates[s.Guid] = s.State;
+            }
+
+            for (int i = 0; i < saved.Count; i++)
+            {
+                var savedState = SubSceneStateSection.GetState(saved, i);
+
+                // Loading は一時状態のため比較対象外
+                if (savedState == SceneLoadState.Loading) continue;
+
+                var guid = SubSceneStateSection.GetGuid(saved, i);
+
+                if (!currentStates.TryGetValue(guid, out var currentState))
+                {
+                    // 保存時に存在したシーンが現在の Provider に無い
+                    warnings.Add(WarningRecord.Create(
+                        LoadWarningKind.SceneLoadStateMismatch,
+                        typeSectionId: 0,
+                        saveEntityIndex: i,
+                        sourceEntity: Entity.Null));
+                    continue;
+                }
+
+                if (currentState == SceneLoadState.Loading) continue;
+
+                if (savedState != currentState)
+                {
+                    warnings.Add(WarningRecord.Create(
+                        LoadWarningKind.SceneLoadStateMismatch,
+                        typeSectionId: 0,
+                        saveEntityIndex: i,
+                        sourceEntity: Entity.Null));
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="SceneLoadInfo.ContentHash"/> の一致検証。
+        /// <see cref="ContentVerificationMode.GuidAndContentHash"/> のときのみ呼ばれる。
+        /// </summary>
         private static void VerifyContentHashes(
             SubSceneDefinition def,
             in SubSceneStateSectionView saved,

@@ -49,13 +49,13 @@ namespace ECSave.Tests.Runtime
                 em.AddSharedComponent(e, new FactionTag { FactionId = 42 });
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             _world.Dispose();
             _world = new World("SharedComponentTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -86,13 +86,13 @@ namespace ECSave.Tests.Runtime
                 em.AddSharedComponent(entities[i], new FactionTag { FactionId = i % 3 });
             }
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             _world.Dispose();
             _world = new World("SharedComponentTestWorld");
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);

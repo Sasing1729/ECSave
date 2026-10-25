@@ -36,7 +36,7 @@ namespace ECSave.Tests.Runtime
         [Test]
         public void SerializeAsync_NoGuard_Works()
         {
-            var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var result = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(result.IsSuccess, $"Serialize failed: {result.ErrorCode}");
         }
 
@@ -49,7 +49,7 @@ namespace ECSave.Tests.Runtime
 
             try
             {
-                var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+                var result = _system.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsFalse(result.IsSuccess);
                 Assert.AreEqual(SaveLoadErrorCode.ConcurrentOperation, result.ErrorCode);
             }
@@ -67,7 +67,7 @@ namespace ECSave.Tests.Runtime
 
             try
             {
-                var result = _system.DeserializeAsync(_world, new byte[] { 1, 2, 3 },
+                var result = _system.Deserialize(_world, new byte[] { 1, 2, 3 },
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.IsFalse(result.IsSuccess);
@@ -86,7 +86,7 @@ namespace ECSave.Tests.Runtime
             sys.TryAcquireOperation();
             sys.ReleaseOperation();
 
-            var result = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var result = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(result.IsSuccess);
         }
 
@@ -96,7 +96,7 @@ namespace ECSave.Tests.Runtime
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
-            var result = _system.SerializeAsync(_world, cts.Token).GetAwaiter().GetResult();
+            var result = _system.Serialize(_world, cts.Token).GetAwaiter().GetResult();
             Assert.IsFalse(result.IsSuccess);
             Assert.AreEqual(SaveLoadErrorCode.Cancelled, result.ErrorCode);
         }
@@ -107,7 +107,7 @@ namespace ECSave.Tests.Runtime
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
-            var result = _system.DeserializeAsync(_world, new byte[] { 1 },
+            var result = _system.Deserialize(_world, new byte[] { 1 },
                 RestorationScope.EntireWorld, DeletionPolicy.None, cts.Token)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(result.IsSuccess);
@@ -125,7 +125,7 @@ namespace ECSave.Tests.Runtime
                 using var cts = new CancellationTokenSource();
                 cts.Cancel();
 
-                var result = _system.SerializeAsync(_world, cts.Token).GetAwaiter().GetResult();
+                var result = _system.Serialize(_world, cts.Token).GetAwaiter().GetResult();
                 Assert.AreEqual(SaveLoadErrorCode.Cancelled, result.ErrorCode);
             }
             finally
@@ -145,7 +145,7 @@ namespace ECSave.Tests.Runtime
                 worldId: "IsolatedWorld");
             var sys = new SaveSystem(def);
 
-            var result = sys.SerializeAsync(isolatedWorld).GetAwaiter().GetResult();
+            var result = sys.Serialize(isolatedWorld).GetAwaiter().GetResult();
             Assert.IsTrue(result.IsSuccess);
         }
 
@@ -156,10 +156,10 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new Health { Current = 42, Max = 100 });
 
-            var save = _system.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = _system.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
-            var load = _system.DeserializeAsync(_world, save.Data,
+            var load = _system.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess);

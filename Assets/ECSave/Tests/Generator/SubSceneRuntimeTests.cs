@@ -102,13 +102,13 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 10, Max = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("GenSubSceneWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -146,13 +146,13 @@ namespace ECSave.Tests.Generator
                 };
 
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("GenSubSceneWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -186,13 +186,13 @@ namespace ECSave.Tests.Generator
                 };
 
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("GenSubSceneWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -223,13 +223,13 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("GenSubSceneNoCbWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 

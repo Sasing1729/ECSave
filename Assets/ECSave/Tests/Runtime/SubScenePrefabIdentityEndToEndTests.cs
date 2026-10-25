@@ -138,7 +138,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
                 Assert.That(HasPrefabIdentitySection(save.Data), Is.True,
                     "PrefabIdentity section should be written when provider returns valid info");
@@ -162,7 +162,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
                 Assert.That(HasPrefabIdentitySection(save.Data), Is.False,
                     "PrefabIdentity section should not be written when provider returns null");
@@ -184,7 +184,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
                 Assert.That(HasPrefabIdentitySection(save.Data), Is.False);
             }
@@ -208,13 +208,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("GenPrefabIdentityWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 
@@ -241,7 +241,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 var err = SaveCompression.TryDecompress(save.Data, out var raw);
@@ -254,7 +254,7 @@ namespace ECSave.Tests.Generator
                 _world.Dispose();
                 _world = new World("GenPrefabIdentityWorld");
 
-                var load = sys.DeserializeAsync(_world, raw,
+                var load = sys.Deserialize(_world, raw,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
 

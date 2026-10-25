@@ -12,15 +12,11 @@ namespace ECSave
         private readonly List<IdentityModule> _identities = new();
         private readonly List<SelectionModule> _selections = new();
         private readonly List<MigrationStepBase> _migrations = new();
-        private readonly List<PendingMigration> _pendingMigrations = new();
         private readonly Dictionary<string, string> _renamedFrom = new();
-        private readonly List<string> _warnings = new();
 
         private int _gameDataVersion = 1;
         private string _worldId = "";
         private bool _autoRepairFixedString = true;
-
-        public IReadOnlyList<string> Warnings => _warnings;
 
         public SaveDefinitionBuilder<T> RegisterComponent<T>() where T : unmanaged, IComponentData
             => new(this);
@@ -46,27 +42,47 @@ namespace ECSave
                 return;
             }
 
-            var newType = ExtractNewTypeArgument(type);
-            if (newType != null)
-            {
-                for (int i = 0; i < _pendingMigrations.Count; i++)
-                {
-                    if (_pendingMigrations[i].MigrationType == type)
-                        return;
-                }
-
-                var newTypeName = (newType.FullName ?? newType.Name).Replace('+', '.');
-                _pendingMigrations.Add(new PendingMigration
-                {
-                    MigrationType = type,
-                    NewTypeName = newTypeName,
-                });
+            if (ExtractNewTypeArgument(type) != null)
                 return;
-            }
 
             throw new SaveRegistrationException(
-                "ECSAVE-R008",
-                $"RegisterMigration<{type.FullName}> must derive from MigrationStepBase or implement IComponentMigration<TOld, TNew>.");
+                RegistrationErrorCodes.MigrationTypeInvalid,
+                $"RegisterMigration<{type.FullName}> must derive from MigrationStepBase " +
+                $"or implement IComponentMigration<TOld, TNew>. " +
+                $"If you intended to use IComponentMigration, verify that the Source Generator " +
+                $"processed this scope (check for generator diagnostics).");
+        }
+
+        /// <summary>
+        /// PidForm の登録（Phase 1: no-op）。
+        ///
+        /// <para>
+        /// このメソッドは実行時には何もしない。Source Generator が
+        /// <c>RegisterPidForm&lt;TSave, TPid&gt;()</c> 呼び出しを構文解析で検出し、
+        /// 対応する <c>IPidMigration</c> 実装型の MigrationStep を生成する。
+        /// 生成された Step は、生成された <c>BindModules</c> が
+        /// <see cref="RegisterMigrationStep"/> 経由で登録する。
+        /// </para>
+        /// </summary>
+        public void RegisterPidForm<TSave, TPid>()
+            where TSave : unmanaged
+            where TPid : unmanaged
+        {
+            // No-op. SG がコンパイル時に処理する。
+        }
+
+        /// <summary>
+        /// PidMigration の登録（Phase 1: no-op）。
+        ///
+        /// <para>
+        /// <see cref="RegisterPidForm{TSave, TPid}"/> と同様、実行時には何もしない。
+        /// SG が <c>RegisterPidMigration&lt;TMigration&gt;()</c> 呼び出しを検出し、
+        /// 対応する MigrationStep を生成する。
+        /// </para>
+        /// </summary>
+        public void RegisterPidMigration<TMigration>() where TMigration : class, new()
+        {
+            // No-op. SG がコンパイル時に処理する。
         }
 
         public void SelectEntityReference<T>(Func<T, Entity> field) where T : unmanaged, IComponentData { }
@@ -76,22 +92,21 @@ namespace ECSave
         public void GameDataVersion(int version)
         {
             if (version < 1)
-                throw new SaveRegistrationException("ECSAVE-R002", "GameDataVersion must be >= 1");
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.InvalidGameDataVersion,
+                    "GameDataVersion must be >= 1");
             _gameDataVersion = version;
         }
 
         public void WorldId(string id)
         {
-            // WorldId の上限検証（Review #1）。
-            // フォーマット上 u16 で長さを持つため、1024 byte を超える値は
-            // 保存時に ushort オーバーフローを引き起こす。
             if (id != null)
             {
                 int byteCount = System.Text.Encoding.UTF8.GetByteCount(id);
                 if (byteCount > ECSaveFormatConstants.MaxWorldIdLength)
                 {
                     throw new SaveRegistrationException(
-                        "ECSAVE-R003",
+                        RegistrationErrorCodes.WorldIdTooLong,
                         $"WorldId exceeds {ECSaveFormatConstants.MaxWorldIdLength} UTF-8 bytes: " +
                         $"{byteCount} bytes (value='{id}')");
                 }
@@ -108,7 +123,8 @@ namespace ECSave
         {
             if (module == null) throw new ArgumentNullException(nameof(module));
             if (_modules.Contains(module))
-                throw new SaveRegistrationException("ECSAVE-R001",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.ModuleAlreadyRegistered,
                     $"Module already registered: {module.FullTypeName}");
 
             module.RegistrationId = _modules.Count;
@@ -119,7 +135,8 @@ namespace ECSave
         {
             if (module == null) throw new ArgumentNullException(nameof(module));
             if (_identities.Contains(module))
-                throw new SaveRegistrationException("ECSAVE-R001",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.ModuleAlreadyRegistered,
                     $"Identity module already registered: {module.FullTypeName}");
 
             module.RegistrationId = _identities.Count;
@@ -130,7 +147,8 @@ namespace ECSave
         {
             if (module == null) throw new ArgumentNullException(nameof(module));
             if (_selections.Contains(module))
-                throw new SaveRegistrationException("ECSAVE-R001",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.ModuleAlreadyRegistered,
                     $"Selection module already registered: {module.FullTypeName}.{module.FieldPath}");
 
             module.RegistrationId = _selections.Count;
@@ -141,15 +159,6 @@ namespace ECSave
         {
             if (step == null) throw new ArgumentNullException(nameof(step));
             _migrations.Add(step);
-
-            var stepName = NormalizeTypeName(step.NewTypeName);
-            if (stepName == null) return;
-
-            for (int i = _pendingMigrations.Count - 1; i >= 0; i--)
-            {
-                if (string.Equals(_pendingMigrations[i].NewTypeName, stepName, StringComparison.Ordinal))
-                    _pendingMigrations.RemoveAt(i);
-            }
         }
 
         internal void RecordWithoutEnableable(Type t) { }
@@ -160,24 +169,23 @@ namespace ECSave
         internal void RecordRenamedFrom(Type t, string oldName)
         {
             if (string.IsNullOrEmpty(oldName))
-                throw new SaveRegistrationException("ECSAVE-R005",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.RenamedFromEmpty,
                     "RenamedFrom requires a non-empty old name");
 
-            // oldName は呼び出し側が与える文字列であり、"A.B+Inner"（リフレクション形式）と
-            // "A.B.Inner"（Roslyn 形式）の双方が渡され得る。Source Generator が
-            // ToDisplayString() で '.' 形式の NameHash を出力するため、比較・保存の
-            // 両方で '.' 形式に正規化する。
             string normalizedOldName = oldName.Replace('+', '.');
             string newName = (t.FullName ?? t.Name).Replace('+', '.');
 
             if (normalizedOldName == newName)
-                throw new SaveRegistrationException("ECSAVE-R006",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.RenamedFromSameAsCurrent,
                     $"RenamedFrom must differ from the current name: {newName}");
 
             if (_renamedFrom.TryGetValue(normalizedOldName, out var existing))
             {
                 if (existing == newName) return;
-                throw new SaveRegistrationException("ECSAVE-R007",
+                throw new SaveRegistrationException(
+                    RegistrationErrorCodes.RenamedFromConflict,
                     $"RenamedFrom '{normalizedOldName}' is already mapped to '{existing}'");
             }
 
@@ -186,18 +194,6 @@ namespace ECSave
 
         internal SaveDefinition Build()
         {
-            if (_pendingMigrations.Count > 0)
-            {
-                var names = new List<string>(_pendingMigrations.Count);
-                for (int i = 0; i < _pendingMigrations.Count; i++)
-                    names.Add(_pendingMigrations[i].MigrationType.FullName);
-                throw new SaveRegistrationException(
-                    "ECSAVE-R011",
-                    "RegisterMigration<T>() was called but no corresponding MigrationStepBase was registered. " +
-                    "This usually indicates the Source Generator did not process this scope, or the generated binder was not invoked. " +
-                    "Migrated types: " + string.Join(", ", names));
-            }
-
             var def = new SaveDefinition(
                 _modules,
                 _identities,
@@ -232,20 +228,6 @@ namespace ECSave
                 return iface.GetGenericArguments()[1];
             }
             return null;
-        }
-
-        private static string NormalizeTypeName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return null;
-            if (name.StartsWith("global::", StringComparison.Ordinal))
-                name = name.Substring(8);
-            return name.Replace('+', '.');
-        }
-
-        private sealed class PendingMigration
-        {
-            public Type MigrationType;
-            public string NewTypeName;
         }
     }
 }

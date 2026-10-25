@@ -93,7 +93,7 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(x);
             SetChunkValue(em, x, new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             RestartWorld();
@@ -108,7 +108,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P5";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -135,7 +135,7 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(entities[0]);
             SetChunkValue(em, entities[0], new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -153,7 +153,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P5";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -176,7 +176,7 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(x);
             SetChunkValue(em, x, new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -191,7 +191,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P5";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -213,7 +213,7 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(x);
             SetChunkValue(em, x, new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -228,7 +228,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P4";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -251,7 +251,7 @@ namespace ECSave.Tests.Runtime
             em.AddChunkComponentData<ChunkData>(x);
             SetChunkValue(em, x, new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -266,7 +266,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P3";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -295,7 +295,7 @@ namespace ECSave.Tests.Runtime
             }
             SetChunkValue(em, entities[0], new ChunkData { Value = 42 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
@@ -315,7 +315,7 @@ namespace ECSave.Tests.Runtime
 
             _injector.FailPhase = "P5";
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 

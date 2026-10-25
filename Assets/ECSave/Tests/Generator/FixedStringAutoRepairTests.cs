@@ -114,10 +114,10 @@ namespace ECSave.Tests.Generator
                 profile.Bio = "短い自己紹介";
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -139,10 +139,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenFixedStringProfile { Level = 1 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -167,10 +167,10 @@ namespace ECSave.Tests.Generator
                     Encoding.ASCII.GetBytes(new string('a', 29)), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -197,10 +197,10 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, Encoding.UTF8.GetBytes(content), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -229,10 +229,10 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, broken, 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -265,10 +265,10 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, broken, 28);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -298,10 +298,10 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, broken, 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -354,10 +354,10 @@ namespace ECSave.Tests.Generator
                     Encoding.UTF8.GetBytes("あああああああああaa"), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -383,10 +383,10 @@ namespace ECSave.Tests.Generator
                     Encoding.UTF8.GetBytes(bioContent), 61);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -414,10 +414,10 @@ namespace ECSave.Tests.Generator
                     Encoding.UTF8.GetBytes(bioContent), 61);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -442,13 +442,13 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Bio, AWithPartialTail(20, 0xE3), 61);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -475,10 +475,10 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 100, Max = 200 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -505,13 +505,13 @@ namespace ECSave.Tests.Generator
                     em.AddComponentData(e, profile);
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenFixedStringWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -544,25 +544,25 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save1 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save1 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save1.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenFixedStringWorld");
 
-                var load1 = sys.DeserializeAsync(_world, save1.Data,
+                var load1 = sys.Deserialize(_world, save1.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load1.IsSuccess);
                 Assert.IsNotEmpty(FixedStringWarnings(load1));
 
-                var save2 = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save2 = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save2.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenFixedStringWorld");
 
-                var load2 = sys.DeserializeAsync(_world, save2.Data,
+                var load2 = sys.Deserialize(_world, save2.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load2.IsSuccess);
@@ -618,16 +618,16 @@ namespace ECSave.Tests.Generator
                 SetFixedStringRaw(ref profile.Name, AWithPartialTail(9, 0xE3, 0x81), 29);
                 em.AddComponentData(e, profile);
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
-                var load1 = sys.DeserializeAsync(_world, save.Data,
+                var load1 = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load1.IsSuccess);
                 int count1 = FixedStringWarnings(load1).Count;
 
-                var load2 = sys.DeserializeAsync(_world, save.Data,
+                var load2 = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load2.IsSuccess);

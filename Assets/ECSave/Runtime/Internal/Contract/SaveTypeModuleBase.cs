@@ -15,16 +15,18 @@ namespace ECSave.Internal
         public override SectionKind SectionKind => SectionKind.Component;
 
         protected virtual ComponentType QueryType => ComponentType.ReadOnly<T>();
-        protected virtual EntityQueryOptions QueryOptions =>
-            EntityQueryOptions.IgnoreComponentEnabledState
-            | EntityQueryOptions.IncludeDisabledEntities;
 
         public override EntityQuery BuildQuery(EntityManager em)
             => ModuleQueryCache.GetOrCreate(em, this, () =>
                 em.CreateEntityQuery(new EntityQueryDesc
                 {
                     All = new[] { QueryType },
-                    Options = QueryOptions,
+                    // QueryOptions は削除。値は inline で与える。
+                    // - protected virtual で override 元ゼロ
+                    // - 生成コード (ModuleEmitter) は BuildQuery を完全 override するため無関係
+                    // - 「API を減らす」方針に沿う
+                    Options = EntityQueryOptions.IgnoreComponentEnabledState
+                            | EntityQueryOptions.IncludeDisabledEntities,
                 }));
 
         public override void RemoveFromEntity(Entity entity, EntityManager em)
@@ -74,7 +76,7 @@ namespace ECSave.Internal
             }
         }
 
-        public unsafe override void ApplySectionBody(
+        public unsafe override void RestoreSection(
             ByteView sectionBody,
             NativeArray<Entity> persistentToEntity,
             EntityManager em)

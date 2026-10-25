@@ -46,12 +46,12 @@ namespace ECSave.Tests.Generator
                         new GenHealth { Current = i * 10, Max = 100 });
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 var emptyQuery = em.CreateEntityQuery(typeof(GenStunned));
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.Custom(emptyQuery), DeletionPolicy.ByScope)
                     .GetAwaiter().GetResult();
 
@@ -79,12 +79,12 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
                 Assert.IsNotNull(save.Data);
                 Assert.Greater(save.Data.Length, 0);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);
@@ -110,14 +110,14 @@ namespace ECSave.Tests.Generator
                 var e = em.CreateEntity();
                 em.AddComponentData(e, new GenHealth { Current = 42, Max = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
                 _world = new World("GenTestWorld");
 
                 // 1回目
-                var load1 = sys.DeserializeAsync(_world, save.Data,
+                var load1 = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load1.IsSuccess);
@@ -127,7 +127,7 @@ namespace ECSave.Tests.Generator
                 Assert.AreEqual(1, count1);
 
                 // 2回目（識別型なしなので新規生成される）
-                var load2 = sys.DeserializeAsync(_world, save.Data,
+                var load2 = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.None)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load2.IsSuccess);
@@ -157,7 +157,7 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddComponentData(e, new GenHealth { Current = 42, Max = 100 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
 
                 _world.Dispose();
@@ -168,7 +168,7 @@ namespace ECSave.Tests.Generator
                 em2.AddComponentData(existing, new GenPlayerId { Value = 1 });
                 em2.AddComponentData(existing, new GenHealth { Current = 0, Max = 0 });
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess);

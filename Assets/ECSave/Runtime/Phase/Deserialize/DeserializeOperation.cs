@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using ECSave.Format;
 using ECSave.Internal;
-using ECSave.Internal.SubScene;
 using ECSave.Phase.Deserialize.Apply;
 using ECSave.Phase.Deserialize.Prephase;
 using Unity.Collections;
@@ -18,6 +17,22 @@ namespace ECSave.Internal
         public DeserializePhaseException(string message) : base(message) { }
     }
 
+    /// <summary>
+    /// Deserialize のステートマシンと各 Stage のオーケストレーション。
+    ///
+    /// <para>
+    /// <b>責務</b>: Stage 遷移、各 Phase の呼び出し順序、ロールバックの制御のみ。
+    /// 各 Phase の実装（D0〜D8.5、P1〜P8）は個別ファイルに分離されている。
+    /// </para>
+    /// <para>
+    /// <b>Stage 構成</b>:
+    /// <list type="bullet">
+    ///   <item>Start → Validated: <see cref="DoPrephase"/>（D0〜D8.5、検証）</item>
+    ///   <item>Validated → Planned: <see cref="DoPlanAndBackup"/>（P1〜P2、計画とバックアップ）</item>
+    ///   <item>Planned → Done: <see cref="DoApply"/>（P3〜P8、適用と確定）</item>
+    /// </list>
+    /// </para>
+    /// </summary>
     internal sealed unsafe class DeserializeOperation : IDisposable
     {
         private enum Stage : byte
@@ -152,6 +167,8 @@ namespace ECSave.Internal
             _onPhaseChanged?.Invoke(phase);
         }
 
+        // ── Stage: Start → Validated ─────────────────
+
         private bool DoPrephase(CancellationToken ct)
         {
             _ctx = PrephaseContext.Create(_def, _world);
@@ -224,6 +241,8 @@ namespace ECSave.Internal
             return true;
         }
 
+        // ── Stage: Validated → Planned ───────────────
+
         private bool DoPlanAndBackup(CancellationToken ct)
         {
             var em = _world.EntityManager;
@@ -284,12 +303,14 @@ namespace ECSave.Internal
             return true;
         }
 
+        // ── Stage: Planned → Done ────────────────────
+
         private void DoApply(CancellationToken ct)
         {
             var em = _world.EntityManager;
 
             DeserializeDiag.BeginPhase();
-            var staleErr = ValidateUpdateTargets(em, _updateTargets);
+            var staleErr = DeserializeApplyHelper.ValidateUpdateTargets(em, _updateTargets);
             DeserializeDiag.EndPhase("P0_Validate");
             if (staleErr != SaveLoadErrorCode.None)
             {
@@ -311,7 +332,7 @@ namespace ECSave.Internal
                         throw new DeserializePhaseException("Injected P3");
 
                     DeserializeDiag.BeginPhase();
-                    CreateEntitiesForAllSections(ref _ctx, _journal, em);
+                    P3_EntityGenerationPhase.Execute(ref _ctx, _journal, em);
                     DeserializeDiag.EndPhase("P3_Generate");
 
                     if (ct.IsCancellationRequested)
@@ -327,11 +348,11 @@ namespace ECSave.Internal
                         throw new DeserializePhaseException("P7.2 failed: " + p72);
 
                     DeserializeDiag.BeginPhase();
-                    ApplyNonChunkModules(ref _ctx, em);
+                    P4_ModuleApplyPhase.ExecuteNonChunk(ref _ctx, em);
                     DeserializeDiag.EndPhase("P4_ApplyModules");
 
                     DeserializeDiag.BeginPhase();
-                    ApplyIdentityModules(ref _ctx, em);
+                    P4_ModuleApplyPhase.ExecuteIdentity(ref _ctx, em);
                     DeserializeDiag.EndPhase("P4_ApplyIdentities");
 
                     DeserializeDiag.BeginPhase();
@@ -341,19 +362,19 @@ namespace ECSave.Internal
                         throw new DeserializePhaseException("P4 removal failed");
 
                     DeserializeDiag.BeginPhase();
-                    ApplyChunkModules(ref _ctx, em);
-                    DeserializeDiag.EndPhase("P6_AddChunkComponents");
+                    P6_ChunkComponentExistencePhase.Execute(ref _ctx, em);
+                    DeserializeDiag.EndPhase("P6_EnsureChunkComponents");
 
                     DeserializeDiag.BeginPhase();
                     var p6 = P6_ChunkComponentRestorePhase.Execute(ref _ctx, em);
-                    DeserializeDiag.EndPhase("P6_RestoreChunks");
+                    DeserializeDiag.EndPhase("P6_RestoreChunkValues");
                     if (p6 != SaveLoadErrorCode.None)
                         throw new DeserializePhaseException("P6 failed");
 
                     if (FaultInjector.ShouldFail("P5"))
                         throw new DeserializePhaseException("Injected P5");
 
-                    sceneSnapshot = CaptureSceneSnapshot(_def.SubScene);
+                    sceneSnapshot = DeserializeApplyHelper.CaptureSceneSnapshot(_def.SubScene);
 
                     DeserializeDiag.BeginPhase();
                     var p35 = P3_5_SceneRestoreExecutionPhase.Execute(
@@ -364,7 +385,7 @@ namespace ECSave.Internal
                     if (p35 != SaveLoadErrorCode.None)
                     {
                         bool entityOk = _journal.Rollback(_updateArray, em);
-                        bool sceneOk = TryRollbackSceneState(
+                        bool sceneOk = DeserializeApplyHelper.TryRollbackSceneState(
                             sceneSnapshot,
                             _ctx.SubSceneRestoreRequests,
                             _def.SubScene,
@@ -441,7 +462,7 @@ namespace ECSave.Internal
                     {
                         DeserializeDiag.BeginPhase();
                         bool entityOk = _journal.Rollback(_updateArray, em);
-                        bool sceneOk = TryRollbackSceneState(
+                        bool sceneOk = DeserializeApplyHelper.TryRollbackSceneState(
                             sceneSnapshot,
                             _ctx.SubSceneRestoreRequests,
                             _def.SubScene,
@@ -453,8 +474,17 @@ namespace ECSave.Internal
                 }
 
                 DeserializeDiag.BeginPhase();
-                var warnings = new List<LoadWarning>();
-                _ctx.Warnings.ToLoadWarnings(warnings, BuildTypeNameMap(ref _ctx));
+                List<LoadWarning> warnings;
+                try
+                {
+                    warnings = P8_WarningCollectionPhase.Execute(ref _ctx);
+                }
+                catch (Exception warnEx)
+                {
+                    UnityEngine.Debug.LogError(
+                        $"[ECSave] Warning collection failed (data was applied successfully): {warnEx}");
+                    warnings = new List<LoadWarning>();
+                }
                 DeserializeDiag.EndPhase("P8_Warnings");
 
                 _result = LoadResult.Success(_ctx.Header.LogicalEntityCount, warnings);
@@ -477,293 +507,6 @@ namespace ECSave.Internal
                     $"[ECSave] DeserializeOperation.DoApply threw: {ex}");
                 _result = LoadResult.Failure(SaveLoadErrorCode.WorldModificationFailed);
             }
-        }
-
-        private static SaveLoadErrorCode ValidateUpdateTargets(
-            EntityManager em, NativeList<Entity> updateTargets)
-        {
-            if (!updateTargets.IsCreated) return SaveLoadErrorCode.None;
-
-            for (int i = 0; i < updateTargets.Length; i++)
-            {
-                var e = updateTargets[i];
-                if (e == Entity.Null) continue;
-                if (!em.Exists(e))
-                    return SaveLoadErrorCode.WorldModificationFailed;
-            }
-            return SaveLoadErrorCode.None;
-        }
-
-        private static IReadOnlyList<SceneLoadInfo> CaptureSceneSnapshot(SubSceneDefinition def)
-        {
-            if (def == null) return null;
-            if (!def.WithSceneStateRollback) return null;
-            if (def.SceneStateProvider == null) return null;
-            if (def.SceneRestoreCallback == null) return null;
-
-            try
-            {
-                return def.SceneStateProvider() ?? Array.Empty<SceneLoadInfo>();
-            }
-            catch (Exception ex)
-            {
-                UnityEngine.Debug.LogError($"[ECSave] Failed to capture scene snapshot: {ex}");
-                return null;
-            }
-        }
-
-        private static bool TryRollbackSceneState(
-            IReadOnlyList<SceneLoadInfo> snapshot,
-            SceneLoadRequest[] executedRequests,
-            SubSceneDefinition def,
-            ref WarningCollector warnings)
-        {
-            if (def == null || !def.WithSceneStateRollback) return true;
-            if (def.SceneRestoreCallback == null) return true;
-
-            try
-            {
-                IReadOnlyList<SceneLoadInfo> target = snapshot;
-                if (target == null && executedRequests != null && executedRequests.Length > 0)
-                {
-                    var inverse = new SceneLoadInfo[executedRequests.Length];
-                    for (int i = 0; i < executedRequests.Length; i++)
-                    {
-                        var r = executedRequests[i];
-                        var invState = r.TargetState == SceneLoadState.Loaded
-                            ? SceneLoadState.Unloaded
-                            : SceneLoadState.Loaded;
-                        inverse[i] = new SceneLoadInfo(r.Guid, invState, r.Mode, r.ContentHash);
-                    }
-                    target = inverse;
-                }
-
-                if (target == null || target.Count == 0) return true;
-
-                var current = new Dictionary<SceneGuid, SceneLoadState>();
-                if (def.SceneStateProvider != null)
-                {
-                    try
-                    {
-                        var cur = def.SceneStateProvider();
-                        if (cur != null)
-                        {
-                            for (int i = 0; i < cur.Count; i++)
-                                current[cur[i].Guid] = cur[i].State;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        UnityEngine.Debug.LogError(
-                            $"[ECSave] SceneStateProvider threw during rollback: {ex}");
-                    }
-                }
-
-                var restore = new List<SceneLoadRequest>();
-                for (int i = 0; i < target.Count; i++)
-                {
-                    var s = target[i];
-                    if (current.TryGetValue(s.Guid, out var curState) && curState == s.State) continue;
-                    restore.Add(new SceneLoadRequest(s.Guid, s.State, s.RestoreMode, s.ContentHash));
-                }
-
-                if (restore.Count == 0) return true;
-
-                var outcomes = def.SceneRestoreCallback(restore.ToArray());
-                if (outcomes == null) return true;
-
-                bool allOk = true;
-                int limit = Math.Min(outcomes.Length, restore.Count);
-                for (int i = 0; i < limit; i++)
-                {
-                    if (!outcomes[i].Success)
-                    {
-                        UnityEngine.Debug.LogWarning(
-                            $"[ECSave] Scene rollback failed for {restore[i].Guid}: {outcomes[i].FailureReason}");
-                        allOk = false;
-                    }
-                }
-
-                if (allOk)
-                {
-                    warnings.Add(WarningRecord.Create(
-                        LoadWarningKind.SceneStateRolledBack, 0, -1, Entity.Null));
-                }
-                return allOk;
-            }
-            catch (Exception ex)
-            {
-                UnityEngine.Debug.LogError($"[ECSave] Scene rollback threw: {ex}");
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// P-1: 全セクション（Identity 含む、ChunkComponent 除く）を事前スキャンして
-        /// 一意な pid を収集し、一括で空 Entity を生成する。
-        ///
-        /// <para>
-        /// <b>重要な不変条件</b>: <c>PersistentToEntity[pid]</c> に既に非 Null が
-        /// 入っている pid（<see cref="P1_PlanPhase"/> で識別マッチした既存 Entity）は
-        /// <b>スキップ</b>する。これを怠ると、マッチした既存 Entity への参照が
-        /// 新規生成 Entity で上書きされ、識別照合の結果が失われる。
-        /// </para>
-        /// </summary>
-        private static unsafe void CreateEntitiesForAllSections(
-            ref PrephaseContext ctx,
-            ApplyJournal journal,
-            EntityManager em)
-        {
-            int maxPids = ctx.Header.LogicalEntityCount;
-            int initialCap = maxPids > 0 ? maxPids : 16;
-
-            var pidsToCreate = new NativeList<uint>(initialCap, Allocator.TempJob);
-            var seen = new NativeParallelHashSet<uint>(initialCap, Allocator.TempJob);
-
-            try
-            {
-                for (int i = 0; i < ctx.SectionTable.Count; i++)
-                {
-                    ref var entry = ref ctx.SectionTable.Entries[i];
-                    var m = ctx.ModuleBySection[i];
-
-                    bool isNonChunk = m != null && m.SectionKind != SectionKind.ChunkComponent;
-                    bool isIdentity = entry.Kind == SectionKind.Identity;
-
-                    if (!isNonChunk && !isIdentity) continue;
-
-                    ByteView bodyView;
-                    try
-                    {
-                        bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                    }
-                    catch (FormatException)
-                    {
-                        continue;
-                    }
-
-                    var v = CommonSectionReader.Read(bodyView);
-                    int count = (int)v.Header.Count;
-
-                    for (int k = 0; k < count; k++)
-                    {
-                        uint pid = v.EntityIndex[k];
-                        if (pid >= ctx.PersistentToEntity.Length)
-                            throw new FormatException(
-                                FormatError.ValidationFailed,
-                                "persistent id out of range");
-
-                        // 識別照合で既に既存 Entity が割り当てられている pid はスキップ。
-                        // ここで上書きするとマッチ結果が失われる。
-                        if (ctx.PersistentToEntity[(int)pid] != Entity.Null) continue;
-
-                        if (seen.Add(pid))
-                            pidsToCreate.Add(pid);
-                    }
-                }
-
-                if (pidsToCreate.Length == 0) return;
-
-                var emptyArchetype = em.CreateArchetype();
-                var entities = em.CreateEntity(emptyArchetype, pidsToCreate.Length, Allocator.TempJob);
-                try
-                {
-                    for (int i = 0; i < pidsToCreate.Length; i++)
-                    {
-                        uint pid = pidsToCreate[i];
-                        ctx.PersistentToEntity[(int)pid] = entities[i];
-                        journal.NoteCreated(entities[i]);
-                    }
-                }
-                finally
-                {
-                    entities.Dispose();
-                }
-            }
-            finally
-            {
-                pidsToCreate.Dispose();
-                seen.Dispose();
-            }
-        }
-
-        private static void ApplyNonChunkModules(ref PrephaseContext ctx, EntityManager em)
-        {
-            for (int i = 0; i < ctx.SectionTable.Count; i++)
-            {
-                var m = ctx.ModuleBySection[i];
-                if (m == null) continue;
-                if (m.SectionKind == SectionKind.ChunkComponent) continue;
-
-                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-            }
-        }
-
-        private static void ApplyIdentityModules(ref PrephaseContext ctx, EntityManager em)
-        {
-            for (int i = 0; i < ctx.SectionTable.Count; i++)
-            {
-                ref var entry = ref ctx.SectionTable.Entries[i];
-                if (entry.Kind != SectionKind.Identity) continue;
-
-                var im = ctx.Definition.FindIdentity(entry.NameHash);
-                if (im == null) continue;
-
-                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                im.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-            }
-        }
-
-        private static void ApplyChunkModules(ref PrephaseContext ctx, EntityManager em)
-        {
-            for (int i = 0; i < ctx.SectionTable.Count; i++)
-            {
-                var m = ctx.ModuleBySection[i];
-                if (m == null) continue;
-                if (m.SectionKind != SectionKind.ChunkComponent) continue;
-
-                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-            }
-        }
-
-        private static unsafe Dictionary<uint, string> BuildTypeNameMap(ref PrephaseContext ctx)
-        {
-            var map = new Dictionary<uint, string>();
-            var table = ctx.SectionTable;
-            if (table.Entries == null) return map;
-
-            for (int i = 0; i < table.Count; i++)
-            {
-                var m = ctx.ModuleBySection != null ? ctx.ModuleBySection[i] : null;
-                if (m != null)
-                {
-                    map[(uint)i] = m.FullTypeName;
-                    continue;
-                }
-
-                ref var entry = ref table.Entries[i];
-                if (entry.NameLength == 0) continue;
-                if (table.NameHeap == null) continue;
-
-                long nameStart = (long)entry.NameOffset;
-                long nameEnd = nameStart + entry.NameLength;
-                if (nameStart < 0 || nameEnd > table.NameHeapLength) continue;
-
-                try
-                {
-                    var name = System.Text.Encoding.UTF8.GetString(
-                        table.NameHeap + nameStart, entry.NameLength);
-                    if (!string.IsNullOrEmpty(name))
-                        map[(uint)i] = name;
-                }
-                catch
-                {
-                }
-            }
-
-            return map;
         }
 
         public void Dispose()

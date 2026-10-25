@@ -10,9 +10,6 @@ using Unity.Entities;
 
 namespace ECSave.Tests.Runtime
 {
-    /// <summary>
-    /// Review #1: WorldId 未設定時のフォールバックと上限検証。
-    /// </summary>
     public class WorldIdDefaultsTests
     {
         private World _world;
@@ -33,7 +30,6 @@ namespace ECSave.Tests.Runtime
         [Test]
         public void EmptyWorldId_SaveLoadSucceeds_UsesWorldName()
         {
-            // WorldId 未設定の SaveDefinition
             var def = new SaveDefinition(
                 new SaveTypeModule[] { new HealthModule() },
                 gameDataVersion: 1,
@@ -44,18 +40,16 @@ namespace ECSave.Tests.Runtime
             var e = em.CreateEntity();
             em.AddComponentData(e, new Health { Current = 42, Max = 100 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
-            // ヘッダの WorldId が World.Name になっている
             var err = SaveCompression.TryDecompress(save.Data, out var raw);
             Assert.AreEqual(SaveLoadErrorCode.None, err);
             var actualWorldId = ReadWorldId(raw);
             Assert.AreEqual("DefaultWorldName", actualWorldId,
                 "Empty WorldId should fall back to World.Name");
 
-            // 同じ World にロードできる
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsTrue(load.IsSuccess, $"Deserialize failed: {load.ErrorCode}");
@@ -73,14 +67,13 @@ namespace ECSave.Tests.Runtime
             var em = _world.EntityManager;
             em.CreateEntity().SetComponentDataSafe(new Health { Current = 1, Max = 2 });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
-            // 別名の World でロード → WorldMismatch
             _world.Dispose();
             _world = new World("DifferentWorldName");
 
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                 .GetAwaiter().GetResult();
             Assert.IsFalse(load.IsSuccess);
@@ -98,7 +91,7 @@ namespace ECSave.Tests.Runtime
             var sys = new SaveSystem(def);
             _world.EntityManager.CreateEntity();
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             var err = SaveCompression.TryDecompress(save.Data, out var raw);
@@ -121,7 +114,7 @@ namespace ECSave.Tests.Runtime
             string id = new string('A', ECSaveFormatConstants.MaxWorldIdLength + 1);
             var impl = new SaveDefinitionBuilderImpl();
             var ex = Assert.Throws<SaveRegistrationException>(() => impl.WorldId(id));
-            Assert.AreEqual("ECSAVE-R003", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.WorldIdTooLong, ex.Code);
         }
 
         [Test]
@@ -131,7 +124,7 @@ namespace ECSave.Tests.Runtime
             string id = new string('あ', 342);
             var impl = new SaveDefinitionBuilderImpl();
             var ex = Assert.Throws<SaveRegistrationException>(() => impl.WorldId(id));
-            Assert.AreEqual("ECSAVE-R003", ex.Code);
+            Assert.AreEqual(RegistrationErrorCodes.WorldIdTooLong, ex.Code);
         }
 
         private static unsafe string ReadWorldId(byte[] raw)

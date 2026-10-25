@@ -17,7 +17,7 @@ namespace ECSave.Internal.Contract
                 && existing.GetType() != binder.GetType())
             {
                 throw new SaveRegistrationException(
-                    "ECSAVE-R016",
+                    RegistrationErrorCodes.ScopeBinderConflict,
                     $"Scope '{scopeId}' already registered with a different binder type");
             }
 
@@ -66,15 +66,16 @@ namespace ECSave.Internal.Contract
         /// Domain Reload 無効時の静的状態リセット。
         ///
         /// <para>
-        /// <b>ロード順序の注意</b>: Source Generator が生成する <c>Register()</c> は
-        /// <see cref="UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration"/> で
-        /// 実行される。本リセットも <c>SubsystemRegistration</c> に置くことで、
-        /// 「リセット → 直後に Register」という順序を保つ。
+        /// <b>ロード順序の保証</b>: Source Generator が生成する <c>Register()</c> は
+        /// <see cref="UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded"/> で
+        /// 実行される。本リセットを <c>SubsystemRegistration</c> に置くことで、
+        /// 「リセット → Register」という順序を保証する。
         /// </para>
         /// <para>
-        /// <b>過去の誤り</b>: <c>AfterAssembliesLoaded</c> に置いていた時期があり、
-        /// これは <c>SubsystemRegistration</c> の後に実行されるため、
-        /// Register で登録された binder を直後に消してしまうバグになっていた。
+        /// <b>Unity の制約</b>: 同一 load type 内の複数 <c>RuntimeInitializeOnLoadMethod</c>
+        /// の実行順序は Unity が保証しない。したがって Reset と Register は
+        /// 必ず異なる load type に分ける必要がある
+        /// （<see cref="UnityEngine.RuntimeInitializeLoadType"/> の値順で実行される）。
         /// </para>
         /// </summary>
         [UnityEngine.RuntimeInitializeOnLoadMethod(

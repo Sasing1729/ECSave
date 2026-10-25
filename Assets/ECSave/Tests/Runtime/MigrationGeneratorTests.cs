@@ -183,7 +183,7 @@ namespace ECSave.Tests.Generator
             var e = em.CreateEntity();
             em.AddComponentData(e, new HealthV1 { Value = 42 });
 
-            var save = oldSystem.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = oldSystem.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize: {save.ErrorCode}");
 
             _world.Dispose();
@@ -193,7 +193,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.IsTrue(load.IsSuccess, $"Deserialize: {load.ErrorCode}");

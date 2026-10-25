@@ -35,7 +35,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                return sys.DeserializeAsync(_world, data,
+                return sys.Deserialize(_world, data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
             }
@@ -75,7 +75,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
                 original = save.Data;
             }
@@ -102,7 +102,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
                 original = save.Data;
             }
@@ -132,7 +132,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
                 original = save.Data;
             }
@@ -157,7 +157,7 @@ namespace ECSave.Tests.Generator
             try
             {
                 var sys = scope.GetSaveSystem();
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.IsTrue(save.IsSuccess);
                 original = save.Data;
             }

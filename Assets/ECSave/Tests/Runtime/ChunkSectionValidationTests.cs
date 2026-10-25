@@ -63,7 +63,7 @@ namespace ECSave.Tests.Runtime
             if (chunks.Length > 0)
                 em.SetChunkComponentData(chunks[0], new ChunkData { Value = chunkValue });
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess, $"Serialize failed: {save.ErrorCode}");
 
             var err = SaveCompression.TryDecompress(save.Data, out var raw);
@@ -144,7 +144,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
             var sys = CreateSystem();
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -175,7 +175,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
             var sys = CreateSystem();
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -196,11 +196,11 @@ namespace ECSave.Tests.Runtime
                 em.AddComponentData(e, new Health { Current = 100, Max = 200 });
             }
 
-            var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+            var save = sys.Serialize(_world).GetAwaiter().GetResult();
             Assert.IsTrue(save.IsSuccess);
 
             RestartWorld();
-            var load = sys.DeserializeAsync(_world, save.Data,
+            var load = sys.Deserialize(_world, save.Data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 
@@ -214,7 +214,7 @@ namespace ECSave.Tests.Runtime
 
             RestartWorld();
             var sys = CreateSystem();
-            var load = sys.DeserializeAsync(_world, data,
+            var load = sys.Deserialize(_world, data,
                 RestorationScope.EntireWorld, DeletionPolicy.None)
                 .GetAwaiter().GetResult();
 

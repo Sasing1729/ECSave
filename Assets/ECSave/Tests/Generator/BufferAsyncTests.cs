@@ -46,13 +46,13 @@ namespace ECSave.Tests.Generator
                 buf.Add(new GenInventoryItem { ItemId = 20, Count = 2 });
                 buf.Add(new GenInventoryItem { ItemId = 30, Count = 3 });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True, $"Serialize: {save.ErrorCode}");
 
                 _world.Dispose();
                 _world = new World("BufferAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True, $"Deserialize: {load.ErrorCode}");
@@ -85,13 +85,13 @@ namespace ECSave.Tests.Generator
                 em.AddComponentData(e, new GenPlayerId { Value = 1 });
                 em.AddBuffer<GenInventoryItem>(e); // empty
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("BufferAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -126,13 +126,13 @@ namespace ECSave.Tests.Generator
                         buf.Add(new GenInventoryItem { ItemId = i * 100 + k, Count = k });
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("BufferAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -177,13 +177,13 @@ namespace ECSave.Tests.Generator
                         buf.Add(new GenInventoryItem { ItemId = i * 1000 + k, Count = k });
                 }
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("BufferAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -211,10 +211,10 @@ namespace ECSave.Tests.Generator
             {
                 var sys = scope.GetSaveSystem();
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
@@ -240,13 +240,13 @@ namespace ECSave.Tests.Generator
                 for (int k = 0; k < 50; k++)
                     buf.Add(new GenInventoryItem { ItemId = k * 7, Count = k });
 
-                var save = sys.SerializeAsync(_world).GetAwaiter().GetResult();
+                var save = sys.Serialize(_world).GetAwaiter().GetResult();
                 Assert.That(save.IsSuccess, Is.True);
 
                 _world.Dispose();
                 _world = new World("BufferAsyncWorld");
 
-                var load = sys.DeserializeAsync(_world, save.Data,
+                var load = sys.Deserialize(_world, save.Data,
                     RestorationScope.EntireWorld, DeletionPolicy.ByRegistration)
                     .GetAwaiter().GetResult();
                 Assert.That(load.IsSuccess, Is.True);
