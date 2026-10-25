@@ -311,16 +311,7 @@ namespace ECSave.Internal
                         throw new DeserializePhaseException("Injected P3");
 
                     DeserializeDiag.BeginPhase();
-                    CreateEntitiesForNonChunkSections(ref _ctx, _journal, em);
-
-                    for (int i = 0; i < _ctx.SectionTable.Count; i++)
-                    {
-                        ref var entry = ref _ctx.SectionTable.Entries[i];
-                        if (entry.Kind != SectionKind.Identity) continue;
-
-                        var bodyView = SectionBodyHelper.GetSectionBody(_ctx, i);
-                        CreateEntitiesForSection(bodyView, _ctx.PersistentToEntity, _journal, em);
-                    }
+                    CreateEntitiesForAllSections(ref _ctx, _journal, em);
                     DeserializeDiag.EndPhase("P3_Generate");
 
                     if (ct.IsCancellationRequested)
@@ -607,19 +598,92 @@ namespace ECSave.Internal
             }
         }
 
-        private static void CreateEntitiesForNonChunkSections(
+        /// <summary>
+        /// P-1: 全セクション（Identity 含む、ChunkComponent 除く）を事前スキャンして
+        /// 一意な pid を収集し、一括で空 Entity を生成する。
+        ///
+        /// <para>
+        /// <b>重要な不変条件</b>: <c>PersistentToEntity[pid]</c> に既に非 Null が
+        /// 入っている pid（<see cref="P1_PlanPhase"/> で識別マッチした既存 Entity）は
+        /// <b>スキップ</b>する。これを怠ると、マッチした既存 Entity への参照が
+        /// 新規生成 Entity で上書きされ、識別照合の結果が失われる。
+        /// </para>
+        /// </summary>
+        private static unsafe void CreateEntitiesForAllSections(
             ref PrephaseContext ctx,
             ApplyJournal journal,
             EntityManager em)
         {
-            for (int i = 0; i < ctx.SectionTable.Count; i++)
-            {
-                var m = ctx.ModuleBySection[i];
-                if (m == null) continue;
-                if (m.SectionKind == SectionKind.ChunkComponent) continue;
+            int maxPids = ctx.Header.LogicalEntityCount;
+            int initialCap = maxPids > 0 ? maxPids : 16;
 
-                var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
-                CreateEntitiesForSection(bodyView, ctx.PersistentToEntity, journal, em);
+            var pidsToCreate = new NativeList<uint>(initialCap, Allocator.TempJob);
+            var seen = new NativeParallelHashSet<uint>(initialCap, Allocator.TempJob);
+
+            try
+            {
+                for (int i = 0; i < ctx.SectionTable.Count; i++)
+                {
+                    ref var entry = ref ctx.SectionTable.Entries[i];
+                    var m = ctx.ModuleBySection[i];
+
+                    bool isNonChunk = m != null && m.SectionKind != SectionKind.ChunkComponent;
+                    bool isIdentity = entry.Kind == SectionKind.Identity;
+
+                    if (!isNonChunk && !isIdentity) continue;
+
+                    ByteView bodyView;
+                    try
+                    {
+                        bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
+                    }
+                    catch (FormatException)
+                    {
+                        continue;
+                    }
+
+                    var v = CommonSectionReader.Read(bodyView);
+                    int count = (int)v.Header.Count;
+
+                    for (int k = 0; k < count; k++)
+                    {
+                        uint pid = v.EntityIndex[k];
+                        if (pid >= ctx.PersistentToEntity.Length)
+                            throw new FormatException(
+                                FormatError.ValidationFailed,
+                                "persistent id out of range");
+
+                        // 識別照合で既に既存 Entity が割り当てられている pid はスキップ。
+                        // ここで上書きするとマッチ結果が失われる。
+                        if (ctx.PersistentToEntity[(int)pid] != Entity.Null) continue;
+
+                        if (seen.Add(pid))
+                            pidsToCreate.Add(pid);
+                    }
+                }
+
+                if (pidsToCreate.Length == 0) return;
+
+                var emptyArchetype = em.CreateArchetype();
+                var entities = em.CreateEntity(emptyArchetype, pidsToCreate.Length, Allocator.TempJob);
+                try
+                {
+                    for (int i = 0; i < pidsToCreate.Length; i++)
+                    {
+                        uint pid = pidsToCreate[i];
+                        ctx.PersistentToEntity[(int)pid] = entities[i];
+                        journal.NoteCreated(entities[i]);
+                    }
+                }
+                finally
+                {
+                    entities.Dispose();
+                }
+            }
+            finally
+            {
+                pidsToCreate.Dispose();
+                seen.Dispose();
             }
         }
 
@@ -661,32 +725,6 @@ namespace ECSave.Internal
 
                 var bodyView = SectionBodyHelper.GetSectionBody(ctx, i);
                 m.ApplySectionBody(bodyView, ctx.PersistentToEntity, em);
-            }
-        }
-
-        private static unsafe void CreateEntitiesForSection(
-            ByteView bodyView,
-            NativeArray<Entity> persistentToEntity,
-            ApplyJournal journal,
-            EntityManager em)
-        {
-            var v = CommonSectionReader.Read(bodyView);
-            int count = (int)v.Header.Count;
-
-            for (int k = 0; k < count; k++)
-            {
-                uint pid = v.EntityIndex[k];
-                if (pid >= persistentToEntity.Length)
-                    throw new FormatException(
-                        FormatError.ValidationFailed,
-                        "persistent id out of range");
-
-                if (persistentToEntity[(int)pid] == Entity.Null)
-                {
-                    var e = em.CreateEntity();
-                    persistentToEntity[(int)pid] = e;
-                    journal.NoteCreated(e);
-                }
             }
         }
 
