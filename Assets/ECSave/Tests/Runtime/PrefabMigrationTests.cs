@@ -25,8 +25,11 @@ namespace ECSave.Tests.Runtime.SubScene
         [Test]
         public void Register_ZeroGuid_Ignored()
         {
+            // 0 GUID は無効値として登録されない。
+            // 全体件数（Count）が削除されたため、対象 GUID の TryGet で検証する。
             PrefabSchemaRegistry.Register(0UL, 0xBBBB);
-            Assert.That(PrefabSchemaRegistry.Count, Is.EqualTo(0));
+            Assert.That(PrefabSchemaRegistry.TryGet(0UL, out _), Is.False,
+                "GUID 0 must not be registered (TryGet should return false)");
         }
 
         [Test]
@@ -47,9 +50,12 @@ namespace ECSave.Tests.Runtime.SubScene
         [Test]
         public void Clear_RemovesAll()
         {
+            // クリア後に登録済み GUID が解決できなくなることを検証する。
+            // 全体件数（Count）が削除されたため、対象 GUID の TryGet で検証する。
             PrefabSchemaRegistry.Register(0xAAAA, 0xBBBB);
             PrefabSchemaRegistry.Clear();
-            Assert.That(PrefabSchemaRegistry.Count, Is.EqualTo(0));
+            Assert.That(PrefabSchemaRegistry.TryGet(0xAAAA, out _), Is.False,
+                "After Clear(), all previously registered GUIDs must be unresolvable");
         }
     }
 

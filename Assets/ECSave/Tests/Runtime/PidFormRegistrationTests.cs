@@ -1,68 +1,31 @@
 ﻿using NUnit.Framework;
 using ECSave;
-using Unity.Entities;
 
 namespace ECSave.Tests.Runtime
 {
-    // ── テスト用の保存型と Pid 形 ─────────────────────
-    public struct PidTestSave : IComponentData
-    {
-        public Entity Owner;
-        public int Value;
-    }
-
-    public struct PidTestSavePid
-    {
-        public uint Owner;
-        public int Value;
-    }
-
-    public sealed class PidTestMigration : IPidMigration<PidTestSavePid, PidTestSavePid>
-    {
-        public PidTestSavePid Migrate(in PidTestSavePid old) => old;
-    }
-
     /// <summary>
-    /// Phase 1 の <c>RegisterPidForm</c> / <c>RegisterPidMigration</c> が
-    /// 実行時 no-op であることを検証する。
+    /// <see cref="PidConstants"/> の公開定数と、
+    /// <see cref="ECSave.Format.EntityRefConstants"/> との整合性を検証する。
     ///
-    /// バリデーションはコンパイル時（Source Generator）で行われるため、
-    /// 実行時は呼び出しが通ることだけを確認する。
+    /// <para>
+    /// <b>削除したテスト</b>:
+    /// <list type="bullet">
+    ///   <item><c>RegisterPidForm_NoThrow</c> / <c>RegisterPidMigration_NoThrow</c>:
+    ///         実行時 no-op は SG が処理するマーカーであり、公開契約ではない</item>
+    ///   <item><c>Build_AfterPidRegistrations_Succeeds</c>: no-op 検証の派生。
+    ///         実際の登録は SG 生成コード経由で行われる（SG テストでカバー）</item>
+    /// </list>
+    /// </para>
     /// </summary>
     public class PidFormRegistrationTests
     {
-        [Test]
-        public void RegisterPidForm_NoThrow()
-        {
-            var impl = new SaveDefinitionBuilderImpl();
-            Assert.DoesNotThrow(() =>
-                impl.RegisterPidForm<PidTestSave, PidTestSavePid>());
-        }
-
-        [Test]
-        public void RegisterPidMigration_NoThrow()
-        {
-            var impl = new SaveDefinitionBuilderImpl();
-            Assert.DoesNotThrow(() =>
-                impl.RegisterPidMigration<PidTestMigration>());
-        }
-
-        [Test]
-        public void Build_AfterPidRegistrations_Succeeds()
-        {
-            var impl = new SaveDefinitionBuilderImpl();
-            impl.RegisterPidForm<PidTestSave, PidTestSavePid>();
-            impl.RegisterPidMigration<PidTestMigration>();
-
-            Assert.DoesNotThrow(() => impl.Build());
-        }
-
         [Test]
         public void PidConstants_NullRef_MatchesEntityRefConstants()
         {
             Assert.AreEqual(
                 ECSave.Format.EntityRefConstants.NullRef,
-                PidConstants.NullRef);
+                PidConstants.NullRef,
+                "PidConstants.NullRef must equal EntityRefConstants.NullRef (both are 'no reference')");
         }
 
         [Test]
@@ -70,7 +33,9 @@ namespace ECSave.Tests.Runtime
         {
             Assert.AreEqual(
                 ECSave.Format.EntityRefConstants.UnresolvedRef,
-                PidConstants.UnresolvedRef);
+                PidConstants.UnresolvedRef,
+                "PidConstants.UnresolvedRef must equal EntityRefConstants.UnresolvedRef " +
+                "(both are 'unresolved reference')");
         }
     }
 }
